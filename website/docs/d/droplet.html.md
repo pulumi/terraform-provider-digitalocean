@@ -10,7 +10,7 @@ description: |-
 
 Get information on a Droplet for use in other resources. This data source provides
 all of the Droplet's properties as configured on your DigitalOcean account. This
-is useful if the Droplet in question is not managed by Terraform or you need to
+is useful if the Droplet in question is not managed by this provider or you need to
 utilize any of the Droplet's data.
 
 **Note:** This data source returns a single Droplet. When specifying a `tag`, an

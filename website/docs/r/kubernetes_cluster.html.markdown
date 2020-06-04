@@ -29,35 +29,6 @@ resource "digitalocean_kubernetes_cluster" "foo" {
 }
 ```
 
-### Kubernetes Terraform Provider Example
-
-The cluster's kubeconfig is exported as an attribute allowing you to use it with the [Kubernetes Terraform provider](https://www.terraform.io/docs/providers/kubernetes/index.html). For example:
-
-```hcl
-resource "digitalocean_kubernetes_cluster" "foo" {
-  name    = "foo"
-  region  = "nyc1"
-  # Grab the latest version slug from `doctl kubernetes options versions`
-  version = "1.15.5-do.1"
-  tags    = ["staging"]
-
-  node_pool {
-    name       = "worker-pool"
-    size       = "s-2vcpu-2gb"
-    node_count = 3
-  }
-}
-
-provider "kubernetes" {
-  load_config_file = false
-  host  = digitalocean_kubernetes_cluster.foo.endpoint
-  token = digitalocean_kubernetes_cluster.foo.kube_config[0].token
-  cluster_ca_certificate = base64decode(
-    digitalocean_kubernetes_cluster.foo.kube_config[0].cluster_ca_certificate
-  )
-}
-```
-
 ### Autoscaling Example
 
 Node pools may also be configured to [autoscale](https://www.digitalocean.com/docs/kubernetes/how-to/autoscale/).

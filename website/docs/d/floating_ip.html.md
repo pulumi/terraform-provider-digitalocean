@@ -10,7 +10,7 @@ description: |-
 
 Get information on a floating ip. This data source provides the region and Droplet id
 as configured on your DigitalOcean account. This is useful if the floating IP
-in question is not managed by Terraform or you need to find the Droplet the IP is
+in question is not managed by this provider or you need to find the Droplet the IP is
 attached to.
 
 An error is triggered if the provided floating IP does not exist.

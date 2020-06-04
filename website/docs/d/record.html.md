@@ -10,7 +10,7 @@ description: |-
 
 Get information on a DNS record. This data source provides the name, TTL, and zone
 file as configured on your DigitalOcean account. This is useful if the record
-in question is not managed by Terraform.
+in question is not managed by this provider.
 
 An error is triggered if the provided domain name or record are not managed with
 your DigitalOcean account.
@@ -34,18 +34,6 @@ output "record_ttl" {
 }
 ```
 
-```
-  $ terraform apply
-
-data.digitalocean_record.example: Refreshing state...
-
-Apply complete! Resources: 0 added, 0 changed, 0 destroyed.
-
-Outputs:
-
-record_ttl = 3600
-record_type = A
-```
 
 ## Argument Reference
 

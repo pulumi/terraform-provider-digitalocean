@@ -11,10 +11,10 @@ description: |-
 Get information on Droplets for use in other resources, with the ability to filter and sort the results.
 If no filters are specified, all Droplets will be returned.
 
-This data source is useful if the Droplets in question are not managed by Terraform or you need to
+This data source is useful if the Droplets in question are not managed by this provider or you need to
 utilize any of the Droplets' data.
 
-Note: You can use the [`digitalocean_droplet`](/docs/providers/do/d/droplet.html) data source to obtain metadata
+Note: You can use the `digitalocean_droplet` data source to obtain metadata
 about a single Droplet if you already know the `id`, unique `name`, or unique `tag` to retrieve.
 
 ## Example Usage
