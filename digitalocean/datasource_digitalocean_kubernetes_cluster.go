@@ -29,6 +29,11 @@ func dataSourceDigitalOceanKubernetesCluster() *schema.Resource {
 				Computed: true,
 			},
 
+			"surge_upgrade": {
+				Type:     schema.TypeBool,
+				Computed: true,
+			},
+
 			"vpc_uuid": {
 				Type:     schema.TypeString,
 				Computed: true,
@@ -132,6 +137,11 @@ func dataSourceDigitalOceanKubernetesCluster() *schema.Resource {
 			},
 
 			"kube_config": kubernetesConfigSchema(),
+
+			"auto_upgrade": {
+				Type:     schema.TypeBool,
+				Computed: true,
+			},
 		},
 	}
 }

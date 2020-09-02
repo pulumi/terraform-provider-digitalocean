@@ -1,3 +1,31 @@
+## 1.22.1 (August 7, 2020)
+
+BUG FIXES:
+
+* resource/digitalocean_record: Allow for SRV records with port 0 ([#475](https://github.com/digitalocean/terraform-provider-digitalocean/issues/475)).
+
+## 1.22.0 (July 22, 2020)
+
+IMPROVEMENTS:
+
+* resource/digitalocean_kubernetes_cluster: Enable auto_upgrade on Kubernetes clusters ([#237](https://github.com/digitalocean/terraform-provider-digitalocean/issues/237)). Thanks to @lfarnell!
+* resource/digitalocean_kubernetes_cluster: Add support for surge upgrades ([#465](https://github.com/digitalocean/terraform-provider-digitalocean/pull/465)). Thanks to @varshavaradarajan!
+
+BUG FIXES:
+
+* resource/digitalocean_container_registry_docker_credentials: Update default expiry and don't ignore error ([#467](https://github.com/digitalocean/terraform-provider-digitalocean/pull/467)).
+
+## 1.21.0 (July 20, 2020)
+
+IMPROVEMENTS:
+
+* resource/digitalocean_loadbalancer: Adds 'https' to list of acceptable healthcheck protocols ([#460](https://github.com/digitalocean/terraform-provider-digitalocean/pull/460)). Thanks to @gcox!
+* provider: Update module and import paths for repository transfer ([#463](https://github.com/digitalocean/terraform-provider-digitalocean/pull/463)).
+
+BUG FIXES:
+
+* resource/digitalocean_vpc: Increase timeout on VPC deletion retry ([#455](https://github.com/digitalocean/terraform-provider-digitalocean/pull/455)).
+
 ## 1.20.0 (June 15, 2020)
 
 FEATURES:

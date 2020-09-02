@@ -11,22 +11,22 @@ Requirements
 ------------
 
 -	[Terraform](https://www.terraform.io/downloads.html) 0.10.x
--	[Go](https://golang.org/doc/install) 1.11 (to build the provider plugin)
+-	[Go](https://golang.org/doc/install) 1.14 (to build the provider plugin)
 
 Building The Provider
 ---------------------
 
-Clone repository to: `$GOPATH/src/github.com/terraform-providers/terraform-provider-digitalocean`
+Clone repository to: `$GOPATH/src/github.com/digitalocean/terraform-provider-digitalocean`
 
 ```sh
-$ mkdir -p $GOPATH/src/github.com/terraform-providers; cd $GOPATH/src/github.com/terraform-providers
-$ git clone git@github.com:terraform-providers/terraform-provider-digitalocean
+$ mkdir -p $GOPATH/src/github.com/digitalocean; cd $GOPATH/src/github.com/digitalocean
+$ git clone git@github.com:digitalocean/terraform-provider-digitalocean
 ```
 
 Enter the provider directory and build the provider
 
 ```sh
-$ cd $GOPATH/src/github.com/terraform-providers/terraform-provider-digitalocean
+$ cd $GOPATH/src/github.com/digitalocean/terraform-provider-digitalocean
 $ make build
 ```
 
@@ -70,3 +70,17 @@ $ make testacc TESTARGS='-run=TestAccDigitalOceanDomain_Basic'
 ```
 
 For information about writing acceptance tests, see the main Terraform [contributing guide](https://github.com/hashicorp/terraform/blob/master/.github/CONTRIBUTING.md#writing-acceptance-tests).
+
+Releasing the Provider
+----------------------
+
+This repository contains a GitHub Action configured to automatically build and
+publish assets for release when a tag is pushed that matches the pattern `v*`
+(ie. `v0.1.0`).
+
+A [Gorelaser](https://goreleaser.com/) configuration is provided that produces
+build artifacts matching the [layout required](https://www.terraform.io/docs/registry/providers/publishing.html#manually-preparing-a-release)
+to publish the provider in the Terraform Registry.
+
+Releases will appear as drafts. Once marked as published on the GitHub Releases page,
+they will become available via the Terraform Registry.
