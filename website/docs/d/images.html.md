@@ -30,7 +30,7 @@ data "digitalocean_images" "ubuntu" {
     key = "distribution"
     values = ["Ubuntu"]
   }
-} 
+}
 ```
 
 You can filter on multiple fields and sort the results as well:
@@ -69,6 +69,14 @@ data "digitalocean_images" "available" {
 * `values` - (Required) A list of values to match against the `key` field. Only retrieves images
   where the `key` field takes on one or more of the values provided here.
 
+* `match_by` - (Optional) One of `exact` (default), `re`, or `substring`. For string-typed fields, specify `re` to
+  match by using the `values` as regular expressions, or specify `substring` to match by treating the `values` as
+  substrings to find within the string field.
+
+* `all` - (Optional) Set to `true` to require that a field match all of the `values` instead of just one or more of
+  them. This is useful when matching against multi-valued fields such as lists or sets where you want to ensure
+  that all of the `values` are present in the list or set.
+
 `sort` supports the following arguments:
 
 * `key` - (Required) Sort the images by this key. This may be one of `distribution`, `error_message`, `id`,
@@ -89,7 +97,7 @@ data "digitalocean_images" "available" {
     Linux distributions or One-Click Applications, while non-public images represent
     snapshots and backups and are only available within your account.
   - `regions`: A set of the regions that the image is available in.
-  - `tags`: A set of tags applied to the image 
+  - `tags`: A set of tags applied to the image
   - `created`: When the image was created
   - `status`: Current status of the image
   - `error_message`: Any applicable error message pertaining to the image
