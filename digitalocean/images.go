@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	"github.com/digitalocean/godo"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 type imageListFunc func(ctx context.Context, opt *godo.ListOptions) ([]godo.Image, *godo.Response, error)
@@ -70,10 +70,14 @@ func imageSchema() map[string]*schema.Schema {
 			Type:        schema.TypeString,
 			Description: "error message associated with the image",
 		},
+		"description": {
+			Type:        schema.TypeString,
+			Description: "a description of the image",
+		},
 	}
 }
 
-func getDigitalOceanImages(meta interface{}) ([]interface{}, error) {
+func getDigitalOceanImages(meta interface{}, extra map[string]interface{}) ([]interface{}, error) {
 	client := meta.(*CombinedConfig).godoClient()
 	return listDigitalOceanImages(client.Images.List)
 }
@@ -111,7 +115,7 @@ func listDigitalOceanImages(listImages imageListFunc) ([]interface{}, error) {
 	return allImages, nil
 }
 
-func flattenDigitalOceanImage(rawImage interface{}, meta interface{}) (map[string]interface{}, error) {
+func flattenDigitalOceanImage(rawImage interface{}, meta interface{}, extra map[string]interface{}) (map[string]interface{}, error) {
 	image, ok := rawImage.(godo.Image)
 	if !ok {
 		return nil, fmt.Errorf("Unable to convert to godo.Image")
@@ -138,6 +142,7 @@ func flattenDigitalOceanImage(rawImage interface{}, meta interface{}) (map[strin
 		"tags":           flattenedTags,
 		"status":         image.Status,
 		"error_message":  image.ErrorMessage,
+		"description":    image.Description,
 
 		// Legacy attributes
 		"image": strconv.Itoa(image.ID),

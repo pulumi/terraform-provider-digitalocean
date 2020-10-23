@@ -6,7 +6,7 @@ import (
 
 	"github.com/digitalocean/godo"
 	"github.com/digitalocean/terraform-provider-digitalocean/internal/datalist"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 func dataSourceDigitalOceanSizes() *schema.Resource {
@@ -58,7 +58,7 @@ func dataSourceDigitalOceanSizes() *schema.Resource {
 	return datalist.NewResource(dataListConfig)
 }
 
-func getDigitalOceanSizes(meta interface{}) ([]interface{}, error) {
+func getDigitalOceanSizes(meta interface{}, extra map[string]interface{}) ([]interface{}, error) {
 	client := meta.(*CombinedConfig).godoClient()
 
 	sizes := []interface{}{}
@@ -93,7 +93,7 @@ func getDigitalOceanSizes(meta interface{}) ([]interface{}, error) {
 	return sizes, nil
 }
 
-func flattenDigitalOceanSize(size, meta interface{}) (map[string]interface{}, error) {
+func flattenDigitalOceanSize(size, meta interface{}, extra map[string]interface{}) (map[string]interface{}, error) {
 	s := size.(godo.Size)
 
 	flattenedSize := map[string]interface{}{}

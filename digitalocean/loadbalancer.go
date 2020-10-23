@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/digitalocean/godo"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/hashcode"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 func loadbalancerStateRefreshFunc(client *godo.Client, loadbalancerId string) resource.StateRefreshFunc {
@@ -60,7 +60,7 @@ func expandHealthCheck(config []interface{}) *godo.HealthCheck {
 	return healthcheck
 }
 
-func expandForwardingRules(config []interface{}) []godo.ForwardingRule {
+func expandForwardingRules(client *godo.Client, config []interface{}) ([]godo.ForwardingRule, error) {
 	forwardingRules := make([]godo.ForwardingRule, 0, len(config))
 
 	for _, rawRule := range config {
@@ -74,15 +74,46 @@ func expandForwardingRules(config []interface{}) []godo.ForwardingRule {
 			TlsPassthrough: rule["tls_passthrough"].(bool),
 		}
 
-		if v, ok := rule["certificate_id"]; ok {
-			r.CertificateID = v.(string)
+		if name, nameOk := rule["certificate_name"]; nameOk {
+			certName := name.(string)
+			if certName != "" {
+				cert, err := findCertificateByName(client, certName)
+				if err != nil {
+					return nil, err
+				}
+
+				r.CertificateID = cert.ID
+			}
+		}
+
+		if id, idOk := rule["certificate_id"]; idOk && r.CertificateID == "" {
+			// When the certificate type is lets_encrypt, the certificate
+			// ID will change when it's renewed, so we have to rely on the
+			// certificate name as the primary identifier instead.
+			certName := id.(string)
+			if certName != "" {
+				cert, err := findCertificateByName(client, certName)
+				if err != nil {
+					if strings.Contains(err.Error(), "not found") {
+						log.Println("[DEBUG] Certificate not found looking up by name. Falling back to lookup by ID.")
+						cert, _, err = client.Certificates.Get(context.Background(), certName)
+						if err != nil {
+							return nil, err
+						}
+					} else {
+						return nil, err
+					}
+				}
+
+				r.CertificateID = cert.ID
+			}
 		}
 
 		forwardingRules = append(forwardingRules, r)
 
 	}
 
-	return forwardingRules
+	return forwardingRules, nil
 }
 
 func hashForwardingRules(v interface{}) int {
@@ -96,14 +127,20 @@ func hashForwardingRules(v interface{}) int {
 		strings.ToLower(m["target_protocol"].(string))))
 
 	if v, ok := m["certificate_id"]; ok {
-		buf.WriteString(fmt.Sprintf("%s-", v.(string)))
+		if v.(string) == "" {
+			if name, nameOk := m["certificate_name"]; nameOk {
+				buf.WriteString(fmt.Sprintf("%s-", name.(string)))
+			}
+		} else {
+			buf.WriteString(fmt.Sprintf("%s-", v.(string)))
+		}
 	}
 
 	if v, ok := m["tls_passthrough"]; ok {
 		buf.WriteString(fmt.Sprintf("%t-", v.(bool)))
 	}
 
-	return hashcode.String(buf.String())
+	return SDKHashString(buf.String())
 }
 
 func flattenDropletIds(list []int) *schema.Set {
@@ -150,22 +187,34 @@ func flattenStickySessions(session *godo.StickySessions) []map[string]interface{
 	return result
 }
 
-func flattenForwardingRules(rules []godo.ForwardingRule) []map[string]interface{} {
+func flattenForwardingRules(client *godo.Client, rules []godo.ForwardingRule) ([]map[string]interface{}, error) {
 	result := make([]map[string]interface{}, 0, 1)
 
 	if rules != nil {
 		for _, rule := range rules {
 			r := make(map[string]interface{})
+
 			r["entry_protocol"] = rule.EntryProtocol
 			r["entry_port"] = rule.EntryPort
 			r["target_protocol"] = rule.TargetProtocol
 			r["target_port"] = rule.TargetPort
-			r["certificate_id"] = rule.CertificateID
 			r["tls_passthrough"] = rule.TlsPassthrough
+
+			if rule.CertificateID != "" {
+				// When the certificate type is lets_encrypt, the certificate
+				// ID will change when it's renewed, so we have to rely on the
+				// certificate name as the primary identifier instead.
+				cert, _, err := client.Certificates.Get(context.Background(), rule.CertificateID)
+				if err != nil {
+					return nil, err
+				}
+				r["certificate_id"] = cert.Name
+				r["certificate_name"] = cert.Name
+			}
 
 			result = append(result, r)
 		}
 	}
 
-	return result
+	return result, nil
 }

@@ -8,21 +8,110 @@ import (
 	"time"
 
 	"github.com/digitalocean/godo"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
 func resourceDigitalOceanLoadbalancer() *schema.Resource {
 	return &schema.Resource{
-		Create: resourceDigitalOceanLoadbalancerCreate,
-		Read:   resourceDigitalOceanLoadbalancerRead,
-		Update: resourceDigitalOceanLoadbalancerUpdate,
-		Delete: resourceDigitalOceanLoadbalancerDelete,
+		CreateContext: resourceDigitalOceanLoadbalancerCreate,
+		ReadContext:   resourceDigitalOceanLoadbalancerRead,
+		UpdateContext: resourceDigitalOceanLoadbalancerUpdate,
+		DeleteContext: resourceDigitalOceanLoadbalancerDelete,
 		Importer: &schema.ResourceImporter{
 			State: schema.ImportStatePassthrough,
 		},
 
+		SchemaVersion: 1,
+		StateUpgraders: []schema.StateUpgrader{
+			{
+				Type:    resourceDigitalOceanLoadBalancerV0().CoreConfigSchema().ImpliedType(),
+				Upgrade: migrateLoadBalancerStateV0toV1,
+				Version: 0,
+			},
+		},
+
+		Schema: resourceDigitalOceanLoadBalancerV1(),
+
+		CustomizeDiff: func(ctx context.Context, diff *schema.ResourceDiff, v interface{}) error {
+
+			if _, hasHealthCheck := diff.GetOk("healthcheck"); hasHealthCheck {
+
+				healthCheckProtocol := diff.Get("healthcheck.0.protocol").(string)
+				_, hasPath := diff.GetOk("healthcheck.0.path")
+				if healthCheckProtocol == "http" {
+					if !hasPath {
+						return fmt.Errorf("health check `path` is required for when protocol is `http`")
+					}
+				} else if healthCheckProtocol == "https" {
+					if !hasPath {
+						return fmt.Errorf("health check `path` is required for when protocol is `https`")
+					}
+				} else {
+					if hasPath {
+						return fmt.Errorf("health check `path` is not allowed for when protocol is `tcp`")
+					}
+				}
+			}
+
+			if _, hasStickySession := diff.GetOk("sticky_sessions.#"); hasStickySession {
+
+				sessionType := diff.Get("sticky_sessions.0.type").(string)
+				_, hasCookieName := diff.GetOk("sticky_sessions.0.cookie_name")
+				_, hasTtlSeconds := diff.GetOk("sticky_sessions.0.cookie_ttl_seconds")
+				if sessionType == "cookies" {
+					if !hasCookieName {
+						return fmt.Errorf("sticky sessions `cookie_name` is required for when type is `cookie`")
+					}
+					if !hasTtlSeconds {
+						return fmt.Errorf("sticky sessions `cookie_ttl_seconds` is required for when type is `cookie`")
+					}
+				} else {
+					if hasCookieName {
+						return fmt.Errorf("sticky sessions `cookie_name` is not allowed for when type is `none`")
+					}
+					if hasTtlSeconds {
+						return fmt.Errorf("sticky sessions `cookie_ttl_seconds` is not allowed for when type is `none`")
+					}
+				}
+			}
+
+			return nil
+		},
+	}
+}
+
+func resourceDigitalOceanLoadBalancerV1() map[string]*schema.Schema {
+	loadBalancerV0Schema := resourceDigitalOceanLoadBalancerV0().Schema
+	loadBalancerV1Schema := map[string]*schema.Schema{}
+
+	forwardingRuleSchema := map[string]*schema.Schema{
+		"certificate_name": {
+			Type:         schema.TypeString,
+			Optional:     true,
+			Computed:     true,
+			ValidateFunc: validation.NoZeroValues,
+		},
+	}
+
+	for k, v := range loadBalancerV0Schema["forwarding_rule"].Elem.(*schema.Resource).Schema {
+		forwardingRuleSchema[k] = v
+	}
+	forwardingRuleSchema["certificate_id"].Computed = true
+	forwardingRuleSchema["certificate_id"].Deprecated = "Certificate IDs may change, for example when a Let's Encrypt certificate is auto-renewed. Please specify 'certificate_name' instead."
+
+	for k, v := range loadBalancerV0Schema {
+		loadBalancerV1Schema[k] = v
+	}
+	loadBalancerV1Schema["forwarding_rule"].Elem.(*schema.Resource).Schema = forwardingRuleSchema
+
+	return loadBalancerV1Schema
+}
+
+func resourceDigitalOceanLoadBalancerV0() *schema.Resource {
+	return &schema.Resource{
 		Schema: map[string]*schema.Schema{
 			"region": {
 				Type:     schema.TypeString,
@@ -240,56 +329,44 @@ func resourceDigitalOceanLoadbalancer() *schema.Resource {
 				Computed: true,
 			},
 		},
-
-		CustomizeDiff: func(diff *schema.ResourceDiff, v interface{}) error {
-
-			if _, hasHealthCheck := diff.GetOk("healthcheck"); hasHealthCheck {
-
-				healthCheckProtocol := diff.Get("healthcheck.0.protocol").(string)
-				_, hasPath := diff.GetOk("healthcheck.0.path")
-				if healthCheckProtocol == "http" {
-					if !hasPath {
-						return fmt.Errorf("health check `path` is required for when protocol is `http`")
-					}
-				} else if healthCheckProtocol == "https" {
-					if !hasPath {
-						return fmt.Errorf("health check `path` is required for when protocol is `https`")
-					}
-				} else {
-					if hasPath {
-						return fmt.Errorf("health check `path` is not allowed for when protocol is `tcp`")
-					}
-				}
-			}
-
-			if _, hasStickySession := diff.GetOk("sticky_sessions.#"); hasStickySession {
-
-				sessionType := diff.Get("sticky_sessions.0.type").(string)
-				_, hasCookieName := diff.GetOk("sticky_sessions.0.cookie_name")
-				_, hasTtlSeconds := diff.GetOk("sticky_sessions.0.cookie_ttl_seconds")
-				if sessionType == "cookies" {
-					if !hasCookieName {
-						return fmt.Errorf("sticky sessions `cookie_name` is required for when type is `cookie`")
-					}
-					if !hasTtlSeconds {
-						return fmt.Errorf("sticky sessions `cookie_ttl_seconds` is required for when type is `cookie`")
-					}
-				} else {
-					if hasCookieName {
-						return fmt.Errorf("sticky sessions `cookie_name` is not allowed for when type is `none`")
-					}
-					if hasTtlSeconds {
-						return fmt.Errorf("sticky sessions `cookie_ttl_seconds` is not allowed for when type is `none`")
-					}
-				}
-			}
-
-			return nil
-		},
 	}
 }
 
-func buildLoadBalancerRequest(d *schema.ResourceData) (*godo.LoadBalancerRequest, error) {
+func migrateLoadBalancerStateV0toV1(ctx context.Context, rawState map[string]interface{}, meta interface{}) (map[string]interface{}, error) {
+	if len(rawState) == 0 {
+		log.Println("[DEBUG] Empty state; nothing to migrate.")
+		return rawState, nil
+	}
+	log.Println("[DEBUG] Migrating load balancer schema from v0 to v1.")
+	client := meta.(*CombinedConfig).godoClient()
+
+	// When the certificate type is lets_encrypt, the certificate
+	// ID will change when it's renewed, so we have to rely on the
+	// certificate name as the primary identifier instead.
+	for _, forwardingRule := range rawState["forwarding_rule"].([]interface{}) {
+		fw := forwardingRule.(map[string]interface{})
+		if fw["certificate_id"].(string) == "" {
+			continue
+		}
+
+		cert, _, err := client.Certificates.Get(context.Background(), fw["certificate_id"].(string))
+		if err != nil {
+			return rawState, err
+		}
+
+		fw["certificate_id"] = cert.Name
+		fw["certificate_name"] = cert.Name
+	}
+
+	return rawState, nil
+}
+
+func buildLoadBalancerRequest(client *godo.Client, d *schema.ResourceData) (*godo.LoadBalancerRequest, error) {
+	forwardingRules, err := expandForwardingRules(client, d.Get("forwarding_rule").(*schema.Set).List())
+	if err != nil {
+		return nil, err
+	}
+
 	opts := &godo.LoadBalancerRequest{
 		Name:                   d.Get("name").(string),
 		Region:                 d.Get("region").(string),
@@ -297,7 +374,7 @@ func buildLoadBalancerRequest(d *schema.ResourceData) (*godo.LoadBalancerRequest
 		RedirectHttpToHttps:    d.Get("redirect_http_to_https").(bool),
 		EnableProxyProtocol:    d.Get("enable_proxy_protocol").(bool),
 		EnableBackendKeepalive: d.Get("enable_backend_keepalive").(bool),
-		ForwardingRules:        expandForwardingRules(d.Get("forwarding_rule").(*schema.Set).List()),
+		ForwardingRules:        forwardingRules,
 	}
 
 	if v, ok := d.GetOk("droplet_tag"); ok {
@@ -326,20 +403,20 @@ func buildLoadBalancerRequest(d *schema.ResourceData) (*godo.LoadBalancerRequest
 	return opts, nil
 }
 
-func resourceDigitalOceanLoadbalancerCreate(d *schema.ResourceData, meta interface{}) error {
+func resourceDigitalOceanLoadbalancerCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(*CombinedConfig).godoClient()
 
 	log.Printf("[INFO] Create a Loadbalancer Request")
 
-	lbOpts, err := buildLoadBalancerRequest(d)
+	lbOpts, err := buildLoadBalancerRequest(client, d)
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
 	log.Printf("[DEBUG] Loadbalancer Create: %#v", lbOpts)
 	loadbalancer, _, err := client.LoadBalancers.Create(context.Background(), lbOpts)
 	if err != nil {
-		return fmt.Errorf("Error creating Load Balancer: %s", err)
+		return diag.Errorf("Error creating Load Balancer: %s", err)
 	}
 
 	d.SetId(loadbalancer.ID)
@@ -353,13 +430,13 @@ func resourceDigitalOceanLoadbalancerCreate(d *schema.ResourceData, meta interfa
 		MinTimeout: 15 * time.Second,
 	}
 	if _, err := stateConf.WaitForState(); err != nil {
-		return fmt.Errorf("Error waiting for Load Balancer (%s) to become active: %s", d.Get("name"), err)
+		return diag.Errorf("Error waiting for Load Balancer (%s) to become active: %s", d.Get("name"), err)
 	}
 
-	return resourceDigitalOceanLoadbalancerRead(d, meta)
+	return resourceDigitalOceanLoadbalancerRead(ctx, d, meta)
 }
 
-func resourceDigitalOceanLoadbalancerRead(d *schema.ResourceData, meta interface{}) error {
+func resourceDigitalOceanLoadbalancerRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(*CombinedConfig).godoClient()
 
 	log.Printf("[INFO] Reading the details of the Loadbalancer %s", d.Id())
@@ -370,7 +447,7 @@ func resourceDigitalOceanLoadbalancerRead(d *schema.ResourceData, meta interface
 			d.SetId("")
 			return nil
 		}
-		return fmt.Errorf("Error retrieving Loadbalancer: %s", err)
+		return diag.Errorf("Error retrieving Loadbalancer: %s", err)
 	}
 
 	d.Set("name", loadbalancer.Name)
@@ -386,49 +463,54 @@ func resourceDigitalOceanLoadbalancerRead(d *schema.ResourceData, meta interface
 	d.Set("vpc_uuid", loadbalancer.VPCUUID)
 
 	if err := d.Set("droplet_ids", flattenDropletIds(loadbalancer.DropletIDs)); err != nil {
-		return fmt.Errorf("[DEBUG] Error setting Load Balancer droplet_ids - error: %#v", err)
+		return diag.Errorf("[DEBUG] Error setting Load Balancer droplet_ids - error: %#v", err)
 	}
 
 	if err := d.Set("sticky_sessions", flattenStickySessions(loadbalancer.StickySessions)); err != nil {
-		return fmt.Errorf("[DEBUG] Error setting Load Balancer sticky_sessions - error: %#v", err)
+		return diag.Errorf("[DEBUG] Error setting Load Balancer sticky_sessions - error: %#v", err)
 	}
 
 	if err := d.Set("healthcheck", flattenHealthChecks(loadbalancer.HealthCheck)); err != nil {
-		return fmt.Errorf("[DEBUG] Error setting Load Balancer healthcheck - error: %#v", err)
+		return diag.Errorf("[DEBUG] Error setting Load Balancer healthcheck - error: %#v", err)
 	}
 
-	if err := d.Set("forwarding_rule", flattenForwardingRules(loadbalancer.ForwardingRules)); err != nil {
-		return fmt.Errorf("[DEBUG] Error setting Load Balancer forwarding_rule - error: %#v", err)
+	forwardingRules, err := flattenForwardingRules(client, loadbalancer.ForwardingRules)
+	if err != nil {
+		return diag.Errorf("[DEBUG] Error building Load Balancer forwarding rules - error: %#v", err)
+	}
+
+	if err := d.Set("forwarding_rule", forwardingRules); err != nil {
+		return diag.Errorf("[DEBUG] Error setting Load Balancer forwarding_rule - error: %#v", err)
 	}
 
 	return nil
 
 }
 
-func resourceDigitalOceanLoadbalancerUpdate(d *schema.ResourceData, meta interface{}) error {
+func resourceDigitalOceanLoadbalancerUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(*CombinedConfig).godoClient()
 
-	lbOpts, err := buildLoadBalancerRequest(d)
+	lbOpts, err := buildLoadBalancerRequest(client, d)
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
 	log.Printf("[DEBUG] Load Balancer Update: %#v", lbOpts)
 	_, _, err = client.LoadBalancers.Update(context.Background(), d.Id(), lbOpts)
 	if err != nil {
-		return fmt.Errorf("Error updating Load Balancer: %s", err)
+		return diag.Errorf("Error updating Load Balancer: %s", err)
 	}
 
-	return resourceDigitalOceanLoadbalancerRead(d, meta)
+	return resourceDigitalOceanLoadbalancerRead(ctx, d, meta)
 }
 
-func resourceDigitalOceanLoadbalancerDelete(d *schema.ResourceData, meta interface{}) error {
+func resourceDigitalOceanLoadbalancerDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(*CombinedConfig).godoClient()
 
 	log.Printf("[INFO] Deleting Load Balancer: %s", d.Id())
 	_, err := client.LoadBalancers.Delete(context.Background(), d.Id())
 	if err != nil {
-		return fmt.Errorf("Error deleting Load Balancer: %s", err)
+		return diag.Errorf("Error deleting Load Balancer: %s", err)
 	}
 
 	d.SetId("")

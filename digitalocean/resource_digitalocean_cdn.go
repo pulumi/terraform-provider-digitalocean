@@ -2,24 +2,58 @@ package digitalocean
 
 import (
 	"context"
-	"fmt"
 	"log"
+	"strings"
 
 	"github.com/digitalocean/godo"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
 func resourceDigitalOceanCDN() *schema.Resource {
 	return &schema.Resource{
-		Create: resourceDigitalOceanCDNCreate,
-		Read:   resourceDigitalOceanCDNRead,
-		Update: resourceDigitalOceanCDNUpdate,
-		Delete: resourceDigitalOceanCDNDelete,
+		CreateContext: resourceDigitalOceanCDNCreate,
+		ReadContext:   resourceDigitalOceanCDNRead,
+		UpdateContext: resourceDigitalOceanCDNUpdate,
+		DeleteContext: resourceDigitalOceanCDNDelete,
 		Importer: &schema.ResourceImporter{
 			State: schema.ImportStatePassthrough,
 		},
 
+		SchemaVersion: 1,
+		StateUpgraders: []schema.StateUpgrader{
+			{
+				Type:    resourceDigitalOceanCDNv0().CoreConfigSchema().ImpliedType(),
+				Upgrade: migrateCDNStateV0toV1,
+				Version: 0,
+			},
+		},
+
+		Schema: resourceDigitalOceanCDNv1(),
+	}
+}
+
+func resourceDigitalOceanCDNv1() map[string]*schema.Schema {
+	cdnV1Schema := map[string]*schema.Schema{
+		"certificate_name": {
+			Type:     schema.TypeString,
+			Optional: true,
+			Computed: true,
+		},
+	}
+
+	for k, v := range resourceDigitalOceanCDNv0().Schema {
+		cdnV1Schema[k] = v
+	}
+	cdnV1Schema["certificate_id"].Computed = true
+	cdnV1Schema["certificate_id"].Deprecated = "Certificate IDs may change, for example when a Let's Encrypt certificate is auto-renewed. Please specify 'certificate_name' instead."
+
+	return cdnV1Schema
+}
+
+func resourceDigitalOceanCDNv0() *schema.Resource {
+	return &schema.Resource{
 		Schema: map[string]*schema.Schema{
 			"origin": {
 				Type:         schema.TypeString,
@@ -59,7 +93,32 @@ func resourceDigitalOceanCDN() *schema.Resource {
 	}
 }
 
-func resourceDigitalOceanCDNCreate(d *schema.ResourceData, meta interface{}) error {
+func migrateCDNStateV0toV1(ctx context.Context, rawState map[string]interface{}, meta interface{}) (map[string]interface{}, error) {
+	if len(rawState) == 0 {
+		log.Println("[DEBUG] Empty state; nothing to migrate.")
+		return rawState, nil
+	}
+
+	// When the certificate type is lets_encrypt, the certificate
+	// ID will change when it's renewed, so we have to rely on the
+	// certificate name as the primary identifier instead.
+	certID := rawState["certificate_id"].(string)
+	if certID != "" {
+		log.Println("[DEBUG] Migrating CDN schema from v0 to v1.")
+		client := meta.(*CombinedConfig).godoClient()
+		cert, _, err := client.Certificates.Get(context.Background(), certID)
+		if err != nil {
+			return rawState, err
+		}
+
+		rawState["certificate_id"] = cert.Name
+		rawState["certificate_name"] = cert.Name
+	}
+
+	return rawState, nil
+}
+
+func resourceDigitalOceanCDNCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(*CombinedConfig).godoClient()
 
 	cdnRequest := &godo.CDNCreateRequest{
@@ -74,23 +133,54 @@ func resourceDigitalOceanCDNCreate(d *schema.ResourceData, meta interface{}) err
 		cdnRequest.CustomDomain = v.(string)
 	}
 
-	if v, ok := d.GetOk("certificate_id"); ok {
-		cdnRequest.CertificateID = v.(string)
+	if name, nameOk := d.GetOk("certificate_name"); nameOk {
+		certName := name.(string)
+		if certName != "" {
+			cert, err := findCertificateByName(client, certName)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+
+			cdnRequest.CertificateID = cert.ID
+		}
+	}
+
+	if id, idOk := d.GetOk("certificate_id"); idOk && cdnRequest.CertificateID == "" {
+		// When the certificate type is lets_encrypt, the certificate
+		// ID will change when it's renewed, so we have to rely on the
+		// certificate name as the primary identifier instead.
+		certName := id.(string)
+		if certName != "" {
+			cert, err := findCertificateByName(client, certName)
+			if err != nil {
+				if strings.Contains(err.Error(), "not found") {
+					log.Println("[DEBUG] Certificate not found looking up by name. Falling back to lookup by ID.")
+					cert, _, err = client.Certificates.Get(context.Background(), certName)
+					if err != nil {
+						return diag.FromErr(err)
+					}
+				} else {
+					return diag.FromErr(err)
+				}
+			}
+
+			cdnRequest.CertificateID = cert.ID
+		}
 	}
 
 	log.Printf("[DEBUG] CDN create request: %#v", cdnRequest)
 	cdn, _, err := client.CDNs.Create(context.Background(), cdnRequest)
 	if err != nil {
-		return fmt.Errorf("Error creating CDN: %s", err)
+		return diag.Errorf("Error creating CDN: %s", err)
 	}
 
 	d.SetId(cdn.ID)
 	log.Printf("[INFO] CDN created, ID: %s", d.Id())
 
-	return resourceDigitalOceanCDNRead(d, meta)
+	return resourceDigitalOceanCDNRead(ctx, d, meta)
 }
 
-func resourceDigitalOceanCDNRead(d *schema.ResourceData, meta interface{}) error {
+func resourceDigitalOceanCDNRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(*CombinedConfig).godoClient()
 
 	cdn, resp, err := client.CDNs.Get(context.Background(), d.Id())
@@ -100,20 +190,32 @@ func resourceDigitalOceanCDNRead(d *schema.ResourceData, meta interface{}) error
 			log.Printf("[DEBUG] CDN  (%s) was not found - removing from state", d.Id())
 			d.SetId("")
 		}
-		return fmt.Errorf("Error reading CDN: %s", err)
+		return diag.Errorf("Error reading CDN: %s", err)
 	}
 
 	d.SetId(cdn.ID)
 	d.Set("origin", cdn.Origin)
 	d.Set("ttl", cdn.TTL)
 	d.Set("endpoint", cdn.Endpoint)
-	d.Set("created_at", cdn.CreatedAt)
+	d.Set("created_at", cdn.CreatedAt.UTC().String())
 	d.Set("custom_domain", cdn.CustomDomain)
-	d.Set("certificate_id", cdn.CertificateID)
-	return err
+
+	if cdn.CertificateID != "" {
+		// When the certificate type is lets_encrypt, the certificate
+		// ID will change when it's renewed, so we have to rely on the
+		// certificate name as the primary identifier instead.
+		cert, _, err := client.Certificates.Get(context.Background(), cdn.CertificateID)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		d.Set("certificate_id", cert.Name)
+		d.Set("certificate_name", cert.Name)
+	}
+
+	return diag.FromErr(err)
 }
 
-func resourceDigitalOceanCDNUpdate(d *schema.ResourceData, meta interface{}) error {
+func resourceDigitalOceanCDNUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(*CombinedConfig).godoClient()
 
 	d.Partial(true)
@@ -125,10 +227,9 @@ func resourceDigitalOceanCDNUpdate(d *schema.ResourceData, meta interface{}) err
 		_, _, err := client.CDNs.UpdateTTL(context.Background(), d.Id(), ttlUpdateRequest)
 
 		if err != nil {
-			return fmt.Errorf("Error updating CDN TTL: %s", err)
+			return diag.Errorf("Error updating CDN TTL: %s", err)
 		}
 		log.Printf("[INFO] Updated TTL on CDN")
-		d.SetPartial("ttl")
 	}
 
 	if d.HasChange("certificate_id") || d.HasChange("custom_domain") {
@@ -140,23 +241,22 @@ func resourceDigitalOceanCDNUpdate(d *schema.ResourceData, meta interface{}) err
 		_, _, err := client.CDNs.UpdateCustomDomain(context.Background(), d.Id(), cdnUpdateRequest)
 
 		if err != nil {
-			return fmt.Errorf("Error updating CDN custom domain: %s", err)
+			return diag.Errorf("Error updating CDN custom domain: %s", err)
 		}
 		log.Printf("[INFO] Updated custom domain/certificate on CDN")
-		d.SetPartial("custom_domain_and_certificate_id")
 	}
 
 	d.Partial(false)
-	return resourceDigitalOceanCDNRead(d, meta)
+	return resourceDigitalOceanCDNRead(ctx, d, meta)
 }
 
-func resourceDigitalOceanCDNDelete(d *schema.ResourceData, meta interface{}) error {
+func resourceDigitalOceanCDNDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(*CombinedConfig).godoClient()
 	resourceId := d.Id()
 
 	_, err := client.CDNs.Delete(context.Background(), resourceId)
 	if err != nil {
-		return fmt.Errorf("Error deleting CDN: %s", err)
+		return diag.Errorf("Error deleting CDN: %s", err)
 	}
 
 	d.SetId("")

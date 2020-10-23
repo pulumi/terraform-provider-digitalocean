@@ -3,15 +3,17 @@ package digitalocean
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/digitalocean/godo"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
 func dataSourceDigitalOceanCertificate() *schema.Resource {
 	return &schema.Resource{
-		Read: dataSourceDigitalOceanCertificateRead,
+		ReadContext: dataSourceDigitalOceanCertificateRead,
 		Schema: map[string]*schema.Schema{
 
 			"name": {
@@ -21,6 +23,17 @@ func dataSourceDigitalOceanCertificate() *schema.Resource {
 				ValidateFunc: validation.NoZeroValues,
 			},
 			// computed attributes
+
+			// When the certificate type is lets_encrypt, the certificate
+			// ID will change when it's renewed, so we have to rely on the
+			// certificate name as the primary identifier instead.
+			// We include the UUID as another computed field for use in the
+			// short-term refresh function that waits for it to be ready.
+			"uuid": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: "uuid of the certificate",
+			},
 			"type": {
 				Type:        schema.TypeString,
 				Computed:    true,
@@ -51,27 +64,52 @@ func dataSourceDigitalOceanCertificate() *schema.Resource {
 	}
 }
 
-func dataSourceDigitalOceanCertificateRead(d *schema.ResourceData, meta interface{}) error {
+func dataSourceDigitalOceanCertificateRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(*CombinedConfig).godoClient()
 
+	// When the certificate type is lets_encrypt, the certificate
+	// ID will change when it's renewed, so we have to rely on the
+	// certificate name as the primary identifier instead.
 	name := d.Get("name").(string)
+	cert, err := findCertificateByName(client, name)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
+	d.SetId(cert.Name)
+	d.Set("name", cert.Name)
+	d.Set("uuid", cert.ID)
+	d.Set("type", cert.Type)
+	d.Set("state", cert.State)
+	d.Set("not_after", cert.NotAfter)
+	d.Set("sha1_fingerprint", cert.SHA1Fingerprint)
+
+	if err := d.Set("domains", flattenDigitalOceanCertificateDomains(cert.DNSNames)); err != nil {
+		return diag.Errorf("Error setting `domain`: %+v", err)
+	}
+
+	return nil
+}
+
+func findCertificateByName(client *godo.Client, name string) (*godo.Certificate, error) {
 	opts := &godo.ListOptions{
 		Page:    1,
 		PerPage: 200,
 	}
 
-	certList := []godo.Certificate{}
-
 	for {
 		certs, resp, err := client.Certificates.List(context.Background(), opts)
-
+		if resp != nil && resp.StatusCode == http.StatusNotFound {
+			return nil, nil
+		}
 		if err != nil {
-			return fmt.Errorf("Error retrieving ssh keys: %s", err)
+			return nil, fmt.Errorf("Error retrieving certificates: %s", err)
 		}
 
 		for _, cert := range certs {
-			certList = append(certList, cert)
+			if cert.Name == name {
+				return &cert, nil
+			}
 		}
 
 		if resp.Links == nil || resp.Links.IsLastPage() {
@@ -80,44 +118,11 @@ func dataSourceDigitalOceanCertificateRead(d *schema.ResourceData, meta interfac
 
 		page, err := resp.Links.CurrentPage()
 		if err != nil {
-			return fmt.Errorf("Error retrieving ssh keys: %s", err)
+			return nil, fmt.Errorf("Error retrieving certificates: %s", err)
 		}
 
 		opts.Page = page + 1
 	}
 
-	cert, err := findCertificateByName(certList, name)
-
-	if err != nil {
-		return err
-	}
-
-	d.SetId(cert.ID)
-	d.Set("name", cert.Name)
-	d.Set("type", cert.Type)
-	d.Set("state", cert.State)
-	d.Set("not_after", cert.NotAfter)
-	d.Set("sha1_fingerprint", cert.SHA1Fingerprint)
-
-	if err := d.Set("domains", flattenDigitalOceanCertificateDomains(cert.DNSNames)); err != nil {
-		return fmt.Errorf("Error setting `domain`: %+v", err)
-	}
-
-	return nil
-}
-
-func findCertificateByName(certs []godo.Certificate, name string) (*godo.Certificate, error) {
-	results := make([]godo.Certificate, 0)
-	for _, v := range certs {
-		if v.Name == name {
-			results = append(results, v)
-		}
-	}
-	if len(results) == 1 {
-		return &results[0], nil
-	}
-	if len(results) == 0 {
-		return nil, fmt.Errorf("no certificate found with name %s", name)
-	}
-	return nil, fmt.Errorf("too many certificate found with name %s (found %d, expected 1)", name, len(results))
+	return nil, fmt.Errorf("Certificate %s not found", name)
 }

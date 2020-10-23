@@ -6,7 +6,7 @@ import (
 
 	"github.com/digitalocean/godo"
 	"github.com/digitalocean/terraform-provider-digitalocean/internal/datalist"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 func dataSourceDigitalOceanTags() *schema.Resource {
@@ -42,7 +42,7 @@ func dataSourceDigitalOceanTags() *schema.Resource {
 	return datalist.NewResource(dataListConfig)
 }
 
-func getDigitalOceanTags(meta interface{}) ([]interface{}, error) {
+func getDigitalOceanTags(meta interface{}, extra map[string]interface{}) ([]interface{}, error) {
 	client := meta.(*CombinedConfig).godoClient()
 
 	tagsList := []interface{}{}
@@ -77,7 +77,7 @@ func getDigitalOceanTags(meta interface{}) ([]interface{}, error) {
 	return tagsList, nil
 }
 
-func flattenDigitalOceanTag(tag, meta interface{}) (map[string]interface{}, error) {
+func flattenDigitalOceanTag(tag, meta interface{}, extra map[string]interface{}) (map[string]interface{}, error) {
 	t := tag.(godo.Tag)
 
 	flattenedTag := map[string]interface{}{}

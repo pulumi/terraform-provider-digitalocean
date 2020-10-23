@@ -7,20 +7,53 @@ import (
 	"time"
 
 	"github.com/digitalocean/godo"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
 func resourceDigitalOceanCertificate() *schema.Resource {
 	return &schema.Resource{
-		Create: resourceDigitalOceanCertificateCreate,
-		Read:   resourceDigitalOceanCertificateRead,
-		Delete: resourceDigitalOceanCertificateDelete,
+		CreateContext: resourceDigitalOceanCertificateCreate,
+		ReadContext:   resourceDigitalOceanCertificateRead,
+		DeleteContext: resourceDigitalOceanCertificateDelete,
 		Importer: &schema.ResourceImporter{
 			State: schema.ImportStatePassthrough,
 		},
 
+		Schema: resourceDigitalOceanCertificateV1(),
+
+		SchemaVersion: 1,
+		StateUpgraders: []schema.StateUpgrader{
+			{
+				Type:    resourceDigitalOceanCertificateV0().CoreConfigSchema().ImpliedType(),
+				Upgrade: migrateCertificateStateV0toV1,
+				Version: 0,
+			},
+		},
+	}
+}
+
+func resourceDigitalOceanCertificateV1() map[string]*schema.Schema {
+	certificateV1Schema := map[string]*schema.Schema{
+		// Note that this UUID will change on auto-renewal of a
+		// lets_encrypt certificate.
+		"uuid": {
+			Type:     schema.TypeString,
+			Computed: true,
+		},
+	}
+
+	for k, v := range resourceDigitalOceanCertificateV0().Schema {
+		certificateV1Schema[k] = v
+	}
+
+	return certificateV1Schema
+}
+
+func resourceDigitalOceanCertificateV0() *schema.Resource {
+	return &schema.Resource{
 		Schema: map[string]*schema.Schema{
 			"name": {
 				Type:         schema.TypeString,
@@ -110,6 +143,22 @@ func resourceDigitalOceanCertificate() *schema.Resource {
 	}
 }
 
+func migrateCertificateStateV0toV1(ctx context.Context, rawState map[string]interface{}, meta interface{}) (map[string]interface{}, error) {
+	if len(rawState) == 0 {
+		log.Println("[DEBUG] Empty state; nothing to migrate.")
+		return rawState, nil
+	}
+	log.Println("[DEBUG] Migrating certificate schema from v0 to v1.")
+
+	// When the certificate type is lets_encrypt, the certificate
+	// ID will change when it's renewed, so we have to rely on the
+	// certificate name as the primary identifier instead.
+	rawState["uuid"] = rawState["id"]
+	rawState["id"] = rawState["name"]
+
+	return rawState, nil
+}
+
 func buildCertificateRequest(d *schema.ResourceData) (*godo.CertificateRequest, error) {
 	req := &godo.CertificateRequest{
 		Name: d.Get("name").(string),
@@ -133,22 +182,22 @@ func buildCertificateRequest(d *schema.ResourceData) (*godo.CertificateRequest, 
 	return req, nil
 }
 
-func resourceDigitalOceanCertificateCreate(d *schema.ResourceData, meta interface{}) error {
+func resourceDigitalOceanCertificateCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(*CombinedConfig).godoClient()
 
 	certificateType := d.Get("type").(string)
 	if certificateType == "custom" {
 		if _, ok := d.GetOk("private_key"); !ok {
-			return fmt.Errorf("`private_key` is required for when type is `custom` or empty")
+			return diag.Errorf("`private_key` is required for when type is `custom` or empty")
 		}
 
 		if _, ok := d.GetOk("leaf_certificate"); !ok {
-			return fmt.Errorf("`leaf_certificate` is required for when type is `custom` or empty")
+			return diag.Errorf("`leaf_certificate` is required for when type is `custom` or empty")
 		}
 	} else if certificateType == "lets_encrypt" {
 
 		if _, ok := d.GetOk("domains"); !ok {
-			return fmt.Errorf("`domains` is required for when type is `lets_encrypt`")
+			return diag.Errorf("`domains` is required for when type is `lets_encrypt`")
 		}
 	}
 
@@ -156,18 +205,25 @@ func resourceDigitalOceanCertificateCreate(d *schema.ResourceData, meta interfac
 
 	certReq, err := buildCertificateRequest(d)
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
 	log.Printf("[DEBUG] Certificate Create: %#v", certReq)
 	cert, _, err := client.Certificates.Create(context.Background(), certReq)
 	if err != nil {
-		return fmt.Errorf("Error creating Certificate: %s", err)
+		return diag.Errorf("Error creating Certificate: %s", err)
 	}
 
-	d.SetId(cert.ID)
+	// When the certificate type is lets_encrypt, the certificate
+	// ID will change when it's renewed, so we have to rely on the
+	// certificate name as the primary identifier instead.
+	d.SetId(cert.Name)
 
-	log.Printf("[INFO] Waiting for certificate (%s) to have state 'verified'", cert.ID)
+	// We include the UUID as another computed field for use in the
+	// short-term refresh function that waits for it to be ready.
+	err = d.Set("uuid", cert.ID)
+
+	log.Printf("[INFO] Waiting for certificate (%s) to have state 'verified'", cert.Name)
 	stateConf := &resource.StateChangeConf{
 		Pending:    []string{"pending"},
 		Target:     []string{"verified"},
@@ -178,49 +234,61 @@ func resourceDigitalOceanCertificateCreate(d *schema.ResourceData, meta interfac
 	}
 
 	if _, err := stateConf.WaitForState(); err != nil {
-		return fmt.Errorf("Error waiting for certificate (%s) to become active: %s", d.Get("name"), err)
+		return diag.Errorf("Error waiting for certificate (%s) to become active: %s", d.Get("name"), err)
 	}
 
-	return resourceDigitalOceanCertificateRead(d, meta)
+	return resourceDigitalOceanCertificateRead(ctx, d, meta)
 }
 
-func resourceDigitalOceanCertificateRead(d *schema.ResourceData, meta interface{}) error {
+func resourceDigitalOceanCertificateRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(*CombinedConfig).godoClient()
 
+	// When the certificate type is lets_encrypt, the certificate
+	// ID will change when it's renewed, so we have to rely on the
+	// certificate name as the primary identifier instead.
 	log.Printf("[INFO] Reading the details of the Certificate %s", d.Id())
-	cert, resp, err := client.Certificates.Get(context.Background(), d.Id())
+	cert, err := findCertificateByName(client, d.Id())
 	if err != nil {
-		// check if the certificate no longer exists.
-		if resp != nil && resp.StatusCode == 404 {
-			log.Printf("[WARN] DigitalOcean Certificate (%s) not found", d.Id())
-			d.SetId("")
-			return nil
-		}
+		return diag.Errorf("Error retrieving Certificate: %s", err)
+	}
 
-		return fmt.Errorf("Error retrieving Certificate: %s", err)
+	// check if the certificate no longer exists.
+	if cert == nil {
+		log.Printf("[WARN] DigitalOcean Certificate (%s) not found", d.Id())
+		d.SetId("")
+		return nil
 	}
 
 	d.Set("name", cert.Name)
+	d.Set("uuid", cert.ID)
 	d.Set("type", cert.Type)
 	d.Set("state", cert.State)
 	d.Set("not_after", cert.NotAfter)
 	d.Set("sha1_fingerprint", cert.SHA1Fingerprint)
 
 	if err := d.Set("domains", flattenDigitalOceanCertificateDomains(cert.DNSNames)); err != nil {
-		return fmt.Errorf("Error setting `domains`: %+v", err)
+		return diag.Errorf("Error setting `domains`: %+v", err)
 	}
 
 	return nil
 
 }
 
-func resourceDigitalOceanCertificateDelete(d *schema.ResourceData, meta interface{}) error {
+func resourceDigitalOceanCertificateDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(*CombinedConfig).godoClient()
 
 	log.Printf("[INFO] Deleting Certificate: %s", d.Id())
-	_, err := client.Certificates.Delete(context.Background(), d.Id())
+	cert, err := findCertificateByName(client, d.Id())
 	if err != nil {
-		return fmt.Errorf("Error deleting Certificate: %s", err)
+		return diag.Errorf("Error retrieving Certificate: %s", err)
+	}
+	if cert == nil {
+		return nil
+	}
+
+	_, err = client.Certificates.Delete(context.Background(), cert.ID)
+	if err != nil {
+		return diag.Errorf("Error deleting Certificate: %s", err)
 	}
 
 	return nil
@@ -256,9 +324,10 @@ func newCertificateStateRefreshFunc(d *schema.ResourceData, meta interface{}) re
 	return func() (interface{}, string, error) {
 
 		// Retrieve the certificate properties
-		cert, _, err := client.Certificates.Get(context.Background(), d.Id())
+		uuid := d.Get("uuid").(string)
+		cert, _, err := client.Certificates.Get(context.Background(), uuid)
 		if err != nil {
-			return nil, "", fmt.Errorf("Error retrieving certifica: %s", err)
+			return nil, "", fmt.Errorf("Error retrieving certificate: %s", err)
 		}
 
 		return cert, cert.State, nil

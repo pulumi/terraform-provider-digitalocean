@@ -1,12 +1,11 @@
 package digitalocean
 
 import (
-	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 // Provider returns a schema.Provider for DigitalOcean.
-func Provider() terraform.ResourceProvider {
+func Provider() *schema.Provider {
 	p := &schema.Provider{
 		Schema: map[string]*schema.Schema{
 			"token": {
@@ -63,6 +62,7 @@ func Provider() terraform.ResourceProvider {
 			"digitalocean_project":               dataSourceDigitalOceanProject(),
 			"digitalocean_projects":              dataSourceDigitalOceanProjects(),
 			"digitalocean_record":                dataSourceDigitalOceanRecord(),
+			"digitalocean_records":               dataSourceDigitalOceanRecords(),
 			"digitalocean_region":                dataSourceDigitalOceanRegion(),
 			"digitalocean_regions":               dataSourceDigitalOceanRegions(),
 			"digitalocean_sizes":                 dataSourceDigitalOceanSizes(),
