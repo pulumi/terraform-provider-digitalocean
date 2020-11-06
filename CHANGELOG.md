@@ -1,3 +1,24 @@
+## 2.1.0 (November 06, 2020)
+
+NOTES:
+
+* DigitalOcean Container Registry is now in general availablity and requires a [subscription plan](https://www.digitalocean.com/docs/container-registry/#plans-and-pricing). As a result, the `digitalocean_container_registry` resource now requires setting a `subscription_tier_slug`.
+
+IMPROVEMENTS:
+
+* `digitalocean_container_registry`: Supports setting and updating a `subscription_tier_slug` ([#516](https://github.com/digitalocean/terraform-provider-digitalocean/pull/516)).
+
+BUG FIXES:
+
+* `digitalocean_app`: Suppress diff when env type is `GENERAL` ([#515](https://github.com/digitalocean/terraform-provider-digitalocean/pull/515)).
+
+## 2.0.2 (October 28, 2020)
+
+BUG FIXES:
+
+* `digitalocean_spaces_bucket`: Add retry logic to ensure bucket is available before proceeding ([#510](https://github.com/digitalocean/terraform-provider-digitalocean/issues/510)).
+* Docs: Fix broken link to DigitalOcean app spec ([#509](https://github.com/digitalocean/terraform-provider-digitalocean/pull/509)). Thanks to @edbedbe!
+
 ## 2.0.1 (October 22, 2020)
 
 BUG FIXES:
@@ -78,7 +99,7 @@ IMPROVEMENTS:
 
 BUG FIXES:
 
-* datasource/digitalocean_droplets: Set ID in `flattenDigitalOceanDroplet` to ensure the individual Droplets have their ID exported in the list data source. [#450](https://github.com/terraform-providers/terraform-provider-digitalocean/pull/450)). 
+* datasource/digitalocean_droplets: Set ID in `flattenDigitalOceanDroplet` to ensure the individual Droplets have their ID exported in the list data source. [#450](https://github.com/terraform-providers/terraform-provider-digitalocean/pull/450)).
 
 ## 1.19.0 (June 03, 2020)
 
@@ -94,7 +115,7 @@ IMPROVEMENTS:
 BUG FIXES:
 
 * resource/digitalocean_kubernetes_cluster: Add forcenew to vpc_uuid field ([#443](https://github.com/terraform-providers/terraform-provider-digitalocean/pull/443)). Thanks to KadenLNelson!
-* resource/digitalocean_kubernetes_cluster: Fail faster on cluster create error [#435](https://github.com/terraform-providers/terraform-provider-digitalocean/pull/435)). 
+* resource/digitalocean_kubernetes_cluster: Fail faster on cluster create error [#435](https://github.com/terraform-providers/terraform-provider-digitalocean/pull/435)).
 
 ## 1.18.0 (May 05, 2020)
 
