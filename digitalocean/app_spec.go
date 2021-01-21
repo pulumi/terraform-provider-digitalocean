@@ -47,6 +47,12 @@ func appSpecSchema() map[string]*schema.Schema {
 			Optional: true,
 			Elem:     appSpecDatabaseSchema(),
 		},
+		"env": {
+			Type:     schema.TypeSet,
+			Optional: true,
+			Elem:     appSpecEnvSchema(),
+			Set:      schema.HashResource(appSpecEnvSchema()),
+		},
 	}
 }
 
@@ -65,7 +71,7 @@ func appSpecGitSourceSchema() map[string]*schema.Schema {
 	}
 }
 
-func appSpecGitHubSourceSchema() map[string]*schema.Schema {
+func appSpecGitServiceSourceSchema() map[string]*schema.Schema {
 	return map[string]*schema.Schema{
 		"repo": {
 			Type:        schema.TypeString,
@@ -85,6 +91,14 @@ func appSpecGitHubSourceSchema() map[string]*schema.Schema {
 	}
 }
 
+func appSpecGitHubSourceSchema() map[string]*schema.Schema {
+	return appSpecGitServiceSourceSchema()
+}
+
+func appSpecGitLabSourceSchema() map[string]*schema.Schema {
+	return appSpecGitServiceSourceSchema()
+}
+
 func appSpecEnvSchema() *schema.Resource {
 	return &schema.Resource{
 		Schema: map[string]*schema.Schema{
@@ -97,6 +111,7 @@ func appSpecEnvSchema() *schema.Resource {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Description: "The value of the environment variable.",
+				Sensitive:   true,
 			},
 			"scope": {
 				Type:     schema.TypeString,
@@ -198,6 +213,14 @@ func appSpecComponentBase() map[string]*schema.Schema {
 				Schema: appSpecGitHubSourceSchema(),
 			},
 		},
+		"gitlab": {
+			Type:     schema.TypeList,
+			Optional: true,
+			MaxItems: 1,
+			Elem: &schema.Resource{
+				Schema: appSpecGitLabSourceSchema(),
+			},
+		},
 		"dockerfile_path": {
 			Type:        schema.TypeString,
 			Optional:    true,
@@ -296,6 +319,11 @@ func appSpecStaticSiteSchema() *schema.Resource {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Description: "The name of the error document to use when serving this static site.",
+		},
+		"catchall_document": {
+			Type:        schema.TypeString,
+			Optional:    true,
+			Description: "The name of the document to use as the fallback for any requests to documents that are not found when serving this static site.",
 		},
 	}
 
@@ -399,6 +427,7 @@ func expandAppSpec(config []interface{}) *godo.AppSpec {
 		StaticSites: expandAppSpecStaticSites(appSpecConfig["static_site"].([]interface{})),
 		Workers:     expandAppSpecWorkers(appSpecConfig["worker"].([]interface{})),
 		Databases:   expandAppSpecDatabases(appSpecConfig["database"].([]interface{})),
+		Envs:        expandAppEnvs(appSpecConfig["env"].(*schema.Set).List()),
 	}
 
 	return appSpec
@@ -428,6 +457,10 @@ func flattenAppSpec(spec *godo.AppSpec) []map[string]interface{} {
 
 		if len((*spec).Databases) > 0 {
 			r["database"] = flattenAppSpecDatabases((*spec).Databases)
+		}
+
+		if len((*spec).Envs) > 0 {
+			r["env"] = flattenAppEnvs((*spec).Envs)
 		}
 
 		result = append(result, r)
@@ -473,6 +506,34 @@ func expandAppGitHubSourceSpec(config []interface{}) *godo.GitHubSourceSpec {
 }
 
 func flattenAppGitHubSourceSpec(spec *godo.GitHubSourceSpec) []interface{} {
+	result := make([]interface{}, 0)
+
+	if spec != nil {
+
+		r := make(map[string]interface{})
+		r["repo"] = (*spec).Repo
+		r["branch"] = (*spec).Branch
+		r["deploy_on_push"] = (*spec).DeployOnPush
+
+		result = append(result, r)
+	}
+
+	return result
+}
+
+func expandAppGitLabSourceSpec(config []interface{}) *godo.GitLabSourceSpec {
+	gitLabSourceConfig := config[0].(map[string]interface{})
+
+	gitLabSource := &godo.GitLabSourceSpec{
+		Repo:         gitLabSourceConfig["repo"].(string),
+		Branch:       gitLabSourceConfig["branch"].(string),
+		DeployOnPush: gitLabSourceConfig["deploy_on_push"].(bool),
+	}
+
+	return gitLabSource
+}
+
+func flattenAppGitLabSourceSpec(spec *godo.GitLabSourceSpec) []interface{} {
 	result := make([]interface{}, 0)
 
 	if spec != nil {
@@ -639,6 +700,11 @@ func expandAppSpecServices(config []interface{}) []*godo.AppServiceSpec {
 			s.GitHub = expandAppGitHubSourceSpec(github)
 		}
 
+		gitlab := service["gitlab"].([]interface{})
+		if len(gitlab) > 0 {
+			s.GitLab = expandAppGitLabSourceSpec(gitlab)
+		}
+
 		git := service["git"].([]interface{})
 		if len(git) > 0 {
 			s.Git = expandAppGitSourceSpec(git)
@@ -670,6 +736,7 @@ func flattenAppSpecServices(services []*godo.AppServiceSpec) []map[string]interf
 		r["run_command"] = s.RunCommand
 		r["build_command"] = s.BuildCommand
 		r["github"] = flattenAppGitHubSourceSpec(s.GitHub)
+		r["gitlab"] = flattenAppGitLabSourceSpec(s.GitLab)
 		r["git"] = flattenAppGitSourceSpec(s.Git)
 		r["http_port"] = int(s.HTTPPort)
 		r["routes"] = flattenAppRoutes(s.Routes)
@@ -694,20 +761,26 @@ func expandAppSpecStaticSites(config []interface{}) []*godo.AppStaticSiteSpec {
 		site := rawSite.(map[string]interface{})
 
 		s := &godo.AppStaticSiteSpec{
-			Name:            site["name"].(string),
-			BuildCommand:    site["build_command"].(string),
-			DockerfilePath:  site["dockerfile_path"].(string),
-			Envs:            expandAppEnvs(site["env"].(*schema.Set).List()),
-			SourceDir:       site["source_dir"].(string),
-			OutputDir:       site["output_dir"].(string),
-			IndexDocument:   site["index_document"].(string),
-			ErrorDocument:   site["error_document"].(string),
-			EnvironmentSlug: site["environment_slug"].(string),
+			Name:             site["name"].(string),
+			BuildCommand:     site["build_command"].(string),
+			DockerfilePath:   site["dockerfile_path"].(string),
+			Envs:             expandAppEnvs(site["env"].(*schema.Set).List()),
+			SourceDir:        site["source_dir"].(string),
+			OutputDir:        site["output_dir"].(string),
+			IndexDocument:    site["index_document"].(string),
+			ErrorDocument:    site["error_document"].(string),
+			CatchallDocument: site["catchall_document"].(string),
+			EnvironmentSlug:  site["environment_slug"].(string),
 		}
 
 		github := site["github"].([]interface{})
 		if len(github) > 0 {
 			s.GitHub = expandAppGitHubSourceSpec(github)
+		}
+
+		gitlab := site["gitlab"].([]interface{})
+		if len(gitlab) > 0 {
+			s.GitLab = expandAppGitLabSourceSpec(gitlab)
 		}
 
 		git := site["git"].([]interface{})
@@ -735,6 +808,7 @@ func flattenAppSpecStaticSites(sites []*godo.AppStaticSiteSpec) []map[string]int
 		r["name"] = s.Name
 		r["build_command"] = s.BuildCommand
 		r["github"] = flattenAppGitHubSourceSpec(s.GitHub)
+		r["gitlab"] = flattenAppGitLabSourceSpec(s.GitLab)
 		r["git"] = flattenAppGitSourceSpec(s.Git)
 		r["routes"] = flattenAppRoutes(s.Routes)
 		r["dockerfile_path"] = s.DockerfilePath
@@ -743,6 +817,7 @@ func flattenAppSpecStaticSites(sites []*godo.AppStaticSiteSpec) []map[string]int
 		r["output_dir"] = s.OutputDir
 		r["index_document"] = s.IndexDocument
 		r["error_document"] = s.ErrorDocument
+		r["catchall_document"] = s.CatchallDocument
 		r["environment_slug"] = s.EnvironmentSlug
 
 		result[i] = r
@@ -774,6 +849,11 @@ func expandAppSpecWorkers(config []interface{}) []*godo.AppWorkerSpec {
 			s.GitHub = expandAppGitHubSourceSpec(github)
 		}
 
+		gitlab := worker["gitlab"].([]interface{})
+		if len(gitlab) > 0 {
+			s.GitLab = expandAppGitLabSourceSpec(gitlab)
+		}
+
 		git := worker["git"].([]interface{})
 		if len(git) > 0 {
 			s.Git = expandAppGitSourceSpec(git)
@@ -795,6 +875,7 @@ func flattenAppSpecWorkers(workers []*godo.AppWorkerSpec) []map[string]interface
 		r["run_command"] = w.RunCommand
 		r["build_command"] = w.BuildCommand
 		r["github"] = flattenAppGitHubSourceSpec(w.GitHub)
+		r["gitlab"] = flattenAppGitLabSourceSpec(w.GitLab)
 		r["git"] = flattenAppGitSourceSpec(w.Git)
 		r["dockerfile_path"] = w.DockerfilePath
 		r["env"] = flattenAppEnvs(w.Envs)

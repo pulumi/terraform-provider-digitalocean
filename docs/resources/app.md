@@ -122,6 +122,11 @@ The following arguments are supported:
  - `name` - (Required) The name of the app. Must be unique across all apps in the same account.
  - `region` - The slug for the DigitalOcean data center region hosting the app.
  - `domains` - A list of hostnames where the application will be available.
+ - `env` - Describes an app-wide environment variable made available to all components.
+     * `key` - The name of the environment variable.
+     * `value` - The value of the environment variable.
+     * `scope` - The visibility scope of the environment variable. One of `RUN_TIME`, `BUILD_TIME`, or `RUN_AND_BUILD_TIME` (default).
+     * `type` - The type of the environment variable, `GENERAL` or `SECRET`.
 
 A spec can contain multiple components.
 
@@ -136,10 +141,10 @@ A `service` can contain:
 * `instance_size_slug` - The instance size to use for this component.
 * `instance_count` - The amount of instances that this component should be scaled to.
 * `http_port` - The internal port on which this service's run command will listen.
-* `git` - A Git repo to use as component's source. Only one of `git` and `github` may be set.
+* `git` - A Git repo to use as the component's source. The repository must be able to be cloned without authentication. Only one of `git` and `github` may be set.
   - `repo_clone_url` - The clone URL of the repo.
   - `branch` - The name of the branch to use.
-* `github` - A GitHub repo to use as component's source. Only one of `git` and `github` may be set.
+* `github` - A GitHub repo to use as the component's source. DigitalOcean App Platform must have [access to the repository](https://cloud.digitalocean.com/apps/github/install). Only one of `git` and `github` may be set.
   - `repo` - The name of the repo in the format `owner/repo`.
   - `branch` - The name of the branch to use.
   - `deploy_on_push` - Whether to automatically deploy new commits made to the repo.
@@ -168,10 +173,10 @@ A `worker` can contain:
 * `environment_slug` - An environment slug describing the type of this app.
 * `instance_size_slug` - The instance size to use for this component.
 * `instance_count` - The amount of instances that this component should be scaled to.
-* `git` - A Git repo to use as component's source. Only one of `git` and `github` may be set.
+* `git` - A Git repo to use as the component's source. The repository must be able to be cloned without authentication. Only one of `git` and `github` may be set.
   - `repo_clone_url` - The clone URL of the repo.
   - `branch` - The name of the branch to use.
-* `github` - A GitHub repo to use as component's source. Only one of `git` and `github` may be set.
+* `github` - A GitHub repo to use as the component's source. DigitalOcean App Platform must have [access to the repository](https://cloud.digitalocean.com/apps/github/install). Only one of `git` and `github` may be set.
   - `repo` - The name of the repo in the format `owner/repo`.
   - `branch` - The name of the branch to use.
   - `deploy_on_push` - Whether to automatically deploy new commits made to the repo.
@@ -190,11 +195,12 @@ A `static_site` can contain:
 * `environment_slug` - An environment slug describing the type of this app.
 * `output_dir` - An optional path to where the built assets will be located, relative to the build context. If not set, App Platform will automatically scan for these directory names: `_static`, `dist`, `public`.
 * `index_document` - The name of the index document to use when serving this static site.
-* `error_document` - The name of the error document to use when serving this static site*
-* `git` - A Git repo to use as component's source. Only one of `git` and `github` may be set.
+* `error_document` - The name of the error document to use when serving this static site.
+* `catchall_document` - The name of the document to use as the fallback for any requests to documents that are not found when serving this static site.
+* `git` - A Git repo to use as the component's source. The repository must be able to be cloned without authentication. Only one of `git` and `github` may be set.
   - `repo_clone_url` - The clone URL of the repo.
   - `branch` - The name of the branch to use.
-* `github` - A GitHub repo to use as component's source. Only one of `git` and `github` may be set.
+* `github` - A GitHub repo to use as the component's source. DigitalOcean App Platform must have [access to the repository](https://cloud.digitalocean.com/apps/github/install). Only one of `git` and `github` may be set.
   - `repo` - The name of the repo in the format `owner/repo`.
   - `branch` - The name of the branch to use.
   - `deploy_on_push` - Whether to automatically deploy new commits made to the repo.
