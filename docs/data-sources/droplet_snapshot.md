@@ -31,7 +31,7 @@ data "digitalocean_droplet_snapshot" "web-snapshot" {
 * `most_recent` - (Optional) If more than one result is returned, use the most recent Droplet snapshot.
 
 ~> **NOTE:** If more or less than a single match is returned by the search,
-Terraform will fail. Ensure that your search is specific enough to return
+the update will fail. Ensure that your search is specific enough to return
 a single Droplet snapshot ID only, or use `most_recent` to choose the most recent one.
 
 ## Attributes Reference

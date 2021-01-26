@@ -5,7 +5,7 @@ page_title: "DigitalOcean: digitalocean_spaces_bucket"
 # digitalocean_spaces_bucket
 
 Get information on a Spaces bucket for use in other resources. This is useful if the Spaces bucket in question
-is not managed by Terraform or you need to utilize any of the bucket's data.
+is not managed by the provider or you need to utilize any of the bucket's data.
 
 ## Example Usage
 

@@ -60,7 +60,7 @@ resource "digitalocean_kubernetes_cluster" "example-cluster" {
 
 The following arguments are supported:
 
-* `version_prefix` - (Optional) If provided, Terraform will only return versions that match the string prefix. For example, `1.15.` will match all 1.15.x series releases.
+* `version_prefix` - (Optional) If provided, the provider will only return versions that match the string prefix. For example, `1.15.` will match all 1.15.x series releases.
 
 ## Attributes Reference
 

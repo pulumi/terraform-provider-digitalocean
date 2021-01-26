@@ -6,7 +6,7 @@ page_title: "DigitalOcean: digitalocean_ssh_keys"
 
 Get information on SSH Keys for use in other resources.
 
-This data source is useful if the SSH Keys in question are not managed by Terraform or you need to
+This data source is useful if the SSH Keys in question are not managed by the provider or you need to
 utilize any of the SSH Keys' data.
 
 Note: You can use the [`digitalocean_ssh_key`](droplet) data source to obtain metadata

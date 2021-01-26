@@ -6,7 +6,7 @@ page_title: "DigitalOcean: digitalocean_record"
 
 Get information on a DNS record. This data source provides the name, TTL, and zone
 file as configured on your DigitalOcean account. This is useful if the record
-in question is not managed by Terraform.
+in question is not managed by the provider.
 
 An error is triggered if the provided domain name or record are not managed with
 your DigitalOcean account.
@@ -31,7 +31,6 @@ output "record_ttl" {
 ```
 
 ```
-  $ terraform apply
 
 data.digitalocean_record.example: Refreshing state...
 

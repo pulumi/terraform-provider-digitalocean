@@ -7,7 +7,7 @@ page_title: "DigitalOcean: digitalocean_domains"
 Get information on domains for use in other resources, with the ability to filter and sort the results.
 If no filters are specified, all domains will be returned.
 
-This data source is useful if the domains in question are not managed by Terraform or you need to
+This data source is useful if the domains in question are not managed by this provider or you need to
 utilize any of the domains' data.
 
 Note: You can use the [`digitalocean_domain`](domain) data source to obtain metadata

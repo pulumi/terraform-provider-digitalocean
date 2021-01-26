@@ -17,11 +17,11 @@ Let's Encrypt.
 
 ```hcl
 resource "digitalocean_certificate" "cert" {
-  name              = "custom-terraform-example"
+  name              = "custom-example"
   type              = "custom"
-  private_key       = file("/Users/terraform/certs/privkey.pem")
-  leaf_certificate  = file("/Users/terraform/certs/cert.pem")
-  certificate_chain = file("/Users/terraform/certs/fullchain.pem")
+  private_key       = file("/Users/myuser/certs/privkey.pem")
+  leaf_certificate  = file("/Users/myuser/certs/cert.pem")
+  certificate_chain = file("/Users/myuser/certs/fullchain.pem")
 }
 ```
 
@@ -29,7 +29,7 @@ resource "digitalocean_certificate" "cert" {
 
 ```hcl
 resource "digitalocean_certificate" "cert" {
-  name    = "le-terraform-example"
+  name    = "le-example"
   type    = "lets_encrypt"
   domains = ["example.com"]
 }
@@ -42,7 +42,7 @@ including the `digitalocean_loadbalancer` and `digitalocean_cdn` resources.
 
 ```hcl
 resource "digitalocean_certificate" "cert" {
-  name    = "le-terraform-example"
+  name    = "le-example"
   type    = "lets_encrypt"
   domains = ["example.com"]
 }

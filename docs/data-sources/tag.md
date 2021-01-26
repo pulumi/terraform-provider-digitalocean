@@ -6,7 +6,7 @@ page_title: "DigitalOcean: digitalocean_tag"
 
 Get information on a tag. This data source provides the name as configured on
 your DigitalOcean account. This is useful if the tag name in question is not
-managed by Terraform or you need validate if the tag exists in the account.
+managed by the provider or you need validate if the tag exists in the account.
 
 An error is triggered if the provided tag name does not exist.
 

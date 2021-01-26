@@ -7,7 +7,7 @@ page_title: "DigitalOcean: digitalocean_droplets"
 Get information on Droplets for use in other resources, with the ability to filter and sort the results.
 If no filters are specified, all Droplets will be returned.
 
-This data source is useful if the Droplets in question are not managed by Terraform or you need to
+This data source is useful if the Droplets in question are not managed by the provider or you need to
 utilize any of the Droplets' data.
 
 Note: You can use the [`digitalocean_droplet`](droplet) data source to obtain metadata

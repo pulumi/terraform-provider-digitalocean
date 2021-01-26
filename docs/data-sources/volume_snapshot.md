@@ -48,7 +48,7 @@ resource "digitalocean_volume" "foobar" {
 * `most_recent` - (Optional) If more than one result is returned, use the most recent volume snapshot.
 
 ~> **NOTE:** If more or less than a single match is returned by the search,
-Terraform will fail. Ensure that your search is specific enough to return
+the provider will fail. Ensure that your search is specific enough to return
 a single volume snapshot ID only, or use `most_recent` to choose the most recent one.
 
 ## Attributes Reference

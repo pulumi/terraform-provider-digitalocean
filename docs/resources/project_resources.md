@@ -5,7 +5,7 @@ page_title: "DigitalOcean: digitalocean_project_resources"
 # digitalocean\_project\_resources
 
 Assign resources to a DigitalOcean Project. This is useful if you need to assign resources
-managed in Terraform to a DigitalOcean Project managed outside of Terraform.
+managed via this provider to a DigitalOcean Project managed outside of the provider.
 
 The following resource types can be associated with a project:
 
@@ -19,7 +19,7 @@ The following resource types can be associated with a project:
 
 ## Example Usage
 
-The following example assigns a droplet to a Project managed outside of Terraform:
+The following example assigns a droplet to a Project managed outside of the provider:
 
 ```hcl
 data "digitalocean_project" "playground" {

@@ -5,7 +5,7 @@ page_title: "DigitalOcean: digitalocean_spaces_bucket_object"
 # digitalocean\_spaces\_bucket_object
 
 Provides a bucket object resource for Spaces, DigitalOcean's object storage product.
-The `digitalocean_spaces_bucket_object` resource allows Terraform to upload content
+The `digitalocean_spaces_bucket_object` resource allows the provider to upload content
 to Spaces.
 
 The [Spaces API](https://developers.digitalocean.com/documentation/spaces/) was
@@ -73,14 +73,14 @@ The following arguments are supported:
 * `content_language` - (Optional) The language the content is in e.g. en-US or en-GB.
 * `content_type` - (Optional) A standard MIME type describing the format of the object data, e.g. application/octet-stream. All Valid MIME Types are valid for this input.
 * `website_redirect` - (Optional) Specifies a target URL for [website redirect](http://docs.aws.amazon.com/AmazonS3/latest/dev/how-to-page-redirect.html).
-* `etag` - (Optional) Used to trigger updates. The only meaningful value is `${filemd5("path/to/file")}` (Terraform 0.11.12 or later) or `${md5(file("path/to/file"))}` (Terraform 0.11.11 or earlier).
+* `etag` - (Optional) Used to trigger updates.
 * `metadata` - (Optional) A mapping of keys/values to provision metadata (will be automatically prefixed by `x-amz-meta-`, note that only lowercase label are currently supported by the AWS Go API).
 * `force_destroy` - (Optional) Allow the object to be deleted by removing any legal hold on any object version.
 Default is `false`. This value should be set to `true` only if the bucket has S3 object lock enabled.
 
 If no content is provided through `source`, `content` or `content_base64`, then the object will be empty.
 
--> **Note:** Terraform ignores all leading `/`s in the object's `key` and treats multiple `/`s in the rest of the object's `key` as a single `/`, so values of `/index.html` and `index.html` correspond to the same S3 object as do `first//second///third//` and `first/second/third/`.
+-> **Note:** The provider ignores all leading `/`s in the object's `key` and treats multiple `/`s in the rest of the object's `key` as a single `/`, so values of `/index.html` and `index.html` correspond to the same S3 object as do `first//second///third//` and `first/second/third/`.
 
 ## Attributes Reference
 

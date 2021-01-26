@@ -5,8 +5,7 @@ page_title: "DigitalOcean: digitalocean_droplet"
 # digitalocean\_droplet
 
 Provides a DigitalOcean Droplet resource. This can be used to create,
-modify, and delete Droplets. Droplets also support
-[provisioning](/docs/provisioners/index.html).
+modify, and delete Droplets.
 
 ## Example Usage
 
@@ -48,9 +47,9 @@ The following arguments are supported:
    size is a permanent change**. Increasing only RAM and CPU is reversible.
 * `tags` - (Optional) A list of the tags to be applied to this Droplet.
 * `user_data` (Optional) - A string of the desired User Data for the Droplet.
-* `volume_ids` (Optional) - A list of the IDs of each [block storage volume](/docs/providers/do/r/volume.html) to be attached to the Droplet.
+* `volume_ids` (Optional) - A list of the IDs of each block storage volume to be attached to the Droplet.
 
-~> **NOTE:** If you use `volume_ids` on a Droplet, Terraform will assume management over the full set volumes for the instance, and treat additional volumes as a drift. For this reason, `volume_ids` must not be mixed with external `digitalocean_volume_attachment` resources for a given instance.
+~> **NOTE:** If you use `volume_ids` on a Droplet, this provider will assume management over the full set volumes for the instance, and treat additional volumes as a drift. For this reason, `volume_ids` must not be mixed with external `digitalocean_volume_attachment` resources for a given instance.
 
 ## Attributes Reference
 

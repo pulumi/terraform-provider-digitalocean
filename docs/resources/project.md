@@ -20,7 +20,7 @@ The following resource types can be associated with a project:
 * Spaces Bucket
 * Volume
 
-**Note:** A Terraform managed project cannot be set as a default project.
+**Note:** A provider managed project cannot be set as a default project.
 
 ## Example Usage
 

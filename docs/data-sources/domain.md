@@ -6,7 +6,7 @@ page_title: "DigitalOcean: digitalocean_domain"
 
 Get information on a domain. This data source provides the name, TTL, and zone
 file as configured on your DigitalOcean account. This is useful if the domain
-name in question is not managed by Terraform or you need to utilize TTL or zone
+name in question is not managed by this provider or you need to utilize TTL or zone
 file data.
 
 An error is triggered if the provided domain name is not managed with your
@@ -27,7 +27,6 @@ output "domain_output" {
 ```
 
 ```
-  $ terraform apply
 
 data.digitalocean_domain.example: Refreshing state...
 
