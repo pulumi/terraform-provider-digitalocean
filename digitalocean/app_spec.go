@@ -8,8 +8,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
-func appSpecSchema() map[string]*schema.Schema {
-	return map[string]*schema.Schema{
+// appSpecSchema returns map[string]*schema.Schema for the App Specification.
+// Set isResource to true in order to return a schema with additional attributes
+// appropriate for a resource or false for one used with a data-source.
+func appSpecSchema(isResource bool) map[string]*schema.Schema {
+	spec := map[string]*schema.Schema{
 		"name": {
 			Type:         schema.TypeString,
 			Required:     true,
@@ -21,10 +24,18 @@ func appSpecSchema() map[string]*schema.Schema {
 			Optional:    true,
 			Description: "The slug for the DigitalOcean data center region hosting the app",
 		},
-		"domains": {
-			Type:     schema.TypeSet,
+		"domain": {
+			Type:     schema.TypeList,
 			Optional: true,
-			Elem:     &schema.Schema{Type: schema.TypeString},
+			Computed: true,
+			Elem:     appSpecDomainSchema(),
+		},
+		"domains": {
+			Type:       schema.TypeSet,
+			Optional:   true,
+			Computed:   true,
+			Elem:       &schema.Schema{Type: schema.TypeString},
+			Deprecated: "This attribute has been replaced by `domain` which supports additional functionality.",
 		},
 		"service": {
 			Type:     schema.TypeList,
@@ -42,6 +53,11 @@ func appSpecSchema() map[string]*schema.Schema {
 			Optional: true,
 			Elem:     appSpecWorkerSchema(),
 		},
+		"job": {
+			Type:     schema.TypeList,
+			Optional: true,
+			Elem:     appSpecJobSchema(),
+		},
 		"database": {
 			Type:     schema.TypeList,
 			Optional: true,
@@ -52,6 +68,46 @@ func appSpecSchema() map[string]*schema.Schema {
 			Optional: true,
 			Elem:     appSpecEnvSchema(),
 			Set:      schema.HashResource(appSpecEnvSchema()),
+		},
+	}
+
+	if isResource {
+		spec["domain"].ConflictsWith = []string{"spec.0.domains"}
+	}
+
+	return spec
+}
+
+func appSpecDomainSchema() *schema.Resource {
+	return &schema.Resource{
+		Schema: map[string]*schema.Schema{
+			"name": {
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "The hostname for the domain.",
+			},
+			"type": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+				ValidateFunc: validation.StringInSlice([]string{
+					"DEFAULT",
+					"PRIMARY",
+					"ALIAS",
+				}, false),
+				Description: "The type of the domain.",
+			},
+			"wildcard": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Computed:    true,
+				Description: "Indicates whether the domain includes all sub-domains, in addition to the given domain.",
+			},
+			"zone": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "If the domain uses DigitalOcean DNS and you would like App Platform to automatically manage it for you, set this to the name of the domain on your account.",
+			},
 		},
 	}
 }
@@ -97,6 +153,36 @@ func appSpecGitHubSourceSchema() map[string]*schema.Schema {
 
 func appSpecGitLabSourceSchema() map[string]*schema.Schema {
 	return appSpecGitServiceSourceSchema()
+}
+
+func appSpecImageSourceSchema() map[string]*schema.Schema {
+	return map[string]*schema.Schema{
+		"registry_type": {
+			Type:     schema.TypeString,
+			Required: true,
+			ValidateFunc: validation.StringInSlice([]string{
+				"UNSPECIFIED",
+				"DOCKER_HUB",
+				"DOCR",
+			}, false),
+			Description: "The registry type.",
+		},
+		"registry": {
+			Type:        schema.TypeString,
+			Optional:    true,
+			Description: "The registry name. Must be left empty for the DOCR registry type.",
+		},
+		"repository": {
+			Type:        schema.TypeString,
+			Required:    true,
+			Description: "The repository name.",
+		},
+		"tag": {
+			Type:        schema.TypeString,
+			Optional:    true,
+			Description: "The repository tag. Defaults to latest if not provided.",
+		},
+	}
 }
 
 func appSpecEnvSchema() *schema.Resource {
@@ -237,15 +323,6 @@ func appSpecComponentBase() map[string]*schema.Schema {
 			Elem:     appSpecEnvSchema(),
 			Set:      schema.HashResource(appSpecEnvSchema()),
 		},
-		"routes": {
-			Type:     schema.TypeList,
-			Optional: true,
-			Computed: true,
-			MaxItems: 1,
-			Elem: &schema.Resource{
-				Schema: appSpecRouteSchema(),
-			},
-		},
 		"source_dir": {
 			Type:        schema.TypeString,
 			Optional:    true,
@@ -292,6 +369,27 @@ func appSpecServicesSchema() *schema.Resource {
 				Schema: appSpecHealthCheckSchema(),
 			},
 		},
+		"image": {
+			Type:     schema.TypeList,
+			Optional: true,
+			MaxItems: 1,
+			Elem: &schema.Resource{
+				Schema: appSpecImageSourceSchema(),
+			},
+		},
+		"routes": {
+			Type:     schema.TypeList,
+			Optional: true,
+			Computed: true,
+			Elem: &schema.Resource{
+				Schema: appSpecRouteSchema(),
+			},
+		},
+		"internal_ports": {
+			Type:     schema.TypeSet,
+			Optional: true,
+			Elem:     &schema.Schema{Type: schema.TypeInt},
+		},
 	}
 
 	for k, v := range appSpecComponentBase() {
@@ -325,6 +423,14 @@ func appSpecStaticSiteSchema() *schema.Resource {
 			Optional:    true,
 			Description: "The name of the document to use as the fallback for any requests to documents that are not found when serving this static site.",
 		},
+		"routes": {
+			Type:     schema.TypeList,
+			Optional: true,
+			Computed: true,
+			Elem: &schema.Resource{
+				Schema: appSpecRouteSchema(),
+			},
+		},
 	}
 
 	for k, v := range appSpecComponentBase() {
@@ -342,6 +448,14 @@ func appSpecWorkerSchema() *schema.Resource {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Description: "An optional run command to override the component's default.",
+		},
+		"image": {
+			Type:     schema.TypeList,
+			Optional: true,
+			MaxItems: 1,
+			Elem: &schema.Resource{
+				Schema: appSpecImageSourceSchema(),
+			},
 		},
 		"instance_size_slug": {
 			Type:        schema.TypeString,
@@ -362,6 +476,55 @@ func appSpecWorkerSchema() *schema.Resource {
 
 	return &schema.Resource{
 		Schema: workerSchema,
+	}
+}
+
+func appSpecJobSchema() *schema.Resource {
+	jobSchema := map[string]*schema.Schema{
+		"run_command": {
+			Type:        schema.TypeString,
+			Optional:    true,
+			Description: "An optional run command to override the component's default.",
+		},
+		"image": {
+			Type:     schema.TypeList,
+			Optional: true,
+			MaxItems: 1,
+			Elem: &schema.Resource{
+				Schema: appSpecImageSourceSchema(),
+			},
+		},
+		"instance_size_slug": {
+			Type:        schema.TypeString,
+			Optional:    true,
+			Description: "The instance size to use for this component.",
+		},
+		"instance_count": {
+			Type:        schema.TypeInt,
+			Optional:    true,
+			Default:     1,
+			Description: "The amount of instances that this component should be scaled to.",
+		},
+		"kind": {
+			Type:     schema.TypeString,
+			Optional: true,
+			Default:  "UNSPECIFIED",
+			ValidateFunc: validation.StringInSlice([]string{
+				"UNSPECIFIED",
+				"PRE_DEPLOY",
+				"POST_DEPLOY",
+				"FAILED_DEPLOY",
+			}, false),
+			Description: "The type of job and when it will be run during the deployment process.",
+		},
+	}
+
+	for k, v := range appSpecComponentBase() {
+		jobSchema[k] = v
+	}
+
+	return &schema.Resource{
+		Schema: jobSchema,
 	}
 }
 
@@ -422,18 +585,26 @@ func expandAppSpec(config []interface{}) *godo.AppSpec {
 	appSpec := &godo.AppSpec{
 		Name:        appSpecConfig["name"].(string),
 		Region:      appSpecConfig["region"].(string),
-		Domains:     expandAppDomainSpec(appSpecConfig["domains"].(*schema.Set).List()),
 		Services:    expandAppSpecServices(appSpecConfig["service"].([]interface{})),
 		StaticSites: expandAppSpecStaticSites(appSpecConfig["static_site"].([]interface{})),
 		Workers:     expandAppSpecWorkers(appSpecConfig["worker"].([]interface{})),
+		Jobs:        expandAppSpecJobs(appSpecConfig["job"].([]interface{})),
 		Databases:   expandAppSpecDatabases(appSpecConfig["database"].([]interface{})),
 		Envs:        expandAppEnvs(appSpecConfig["env"].(*schema.Set).List()),
+	}
+
+	// Prefer the `domain` block over `domains` if it is set.
+	domainConfig := appSpecConfig["domain"].([]interface{})
+	if len(domainConfig) > 0 {
+		appSpec.Domains = expandAppSpecDomains(domainConfig)
+	} else {
+		appSpec.Domains = expandAppDomainSpec(appSpecConfig["domains"].(*schema.Set).List())
 	}
 
 	return appSpec
 }
 
-func flattenAppSpec(spec *godo.AppSpec) []map[string]interface{} {
+func flattenAppSpec(d *schema.ResourceData, spec *godo.AppSpec) []map[string]interface{} {
 	result := make([]map[string]interface{}, 0, 1)
 
 	if spec != nil {
@@ -441,7 +612,13 @@ func flattenAppSpec(spec *godo.AppSpec) []map[string]interface{} {
 		r := make(map[string]interface{})
 		r["name"] = (*spec).Name
 		r["region"] = (*spec).Region
-		r["domains"] = flattenAppDomainSpec((*spec).Domains)
+
+		if len((*spec).Domains) > 0 {
+			r["domains"] = flattenAppDomainSpec((*spec).Domains)
+			if _, ok := d.GetOk("spec.0.domain"); ok {
+				r["domain"] = flattenAppSpecDomains((*spec).Domains)
+			}
+		}
 
 		if len((*spec).Services) > 0 {
 			r["service"] = flattenAppSpecServices((*spec).Services)
@@ -453,6 +630,10 @@ func flattenAppSpec(spec *godo.AppSpec) []map[string]interface{} {
 
 		if len((*spec).Workers) > 0 {
 			r["worker"] = flattenAppSpecWorkers((*spec).Workers)
+		}
+
+		if len((*spec).Jobs) > 0 {
+			r["job"] = flattenAppSpecJobs((*spec).Jobs)
 		}
 
 		if len((*spec).Databases) > 0 {
@@ -469,6 +650,7 @@ func flattenAppSpec(spec *godo.AppSpec) []map[string]interface{} {
 	return result
 }
 
+// expandAppDomainSpec has been deprecated in favor of expandAppSpecDomains.
 func expandAppDomainSpec(config []interface{}) []*godo.AppDomainSpec {
 	appDomains := make([]*godo.AppDomainSpec, 0, len(config))
 
@@ -483,11 +665,48 @@ func expandAppDomainSpec(config []interface{}) []*godo.AppDomainSpec {
 	return appDomains
 }
 
+func expandAppSpecDomains(config []interface{}) []*godo.AppDomainSpec {
+	appDomains := make([]*godo.AppDomainSpec, 0, len(config))
+
+	for _, rawDomain := range config {
+		domain := rawDomain.(map[string]interface{})
+
+		d := &godo.AppDomainSpec{
+			Domain:   domain["name"].(string),
+			Type:     godo.AppDomainSpecType(domain["type"].(string)),
+			Wildcard: domain["wildcard"].(bool),
+			Zone:     domain["zone"].(string),
+		}
+
+		appDomains = append(appDomains, d)
+	}
+
+	return appDomains
+}
+
+// flattenAppDomainSpec has been deprecated in favor of flattenAppSpecDomains
 func flattenAppDomainSpec(spec []*godo.AppDomainSpec) *schema.Set {
 	result := schema.NewSet(schema.HashString, []interface{}{})
 
 	for _, domain := range spec {
 		result.Add(domain.Domain)
+	}
+
+	return result
+}
+
+func flattenAppSpecDomains(domains []*godo.AppDomainSpec) []map[string]interface{} {
+	result := make([]map[string]interface{}, len(domains))
+
+	for i, d := range domains {
+		r := make(map[string]interface{})
+
+		r["name"] = d.Domain
+		r["type"] = string(d.Type)
+		r["wildcard"] = d.Wildcard
+		r["zone"] = d.Zone
+
+		result[i] = r
 	}
 
 	return result
@@ -575,6 +794,35 @@ func flattenAppGitSourceSpec(spec *godo.GitSourceSpec) []interface{} {
 	return result
 }
 
+func expandAppImageSourceSpec(config []interface{}) *godo.ImageSourceSpec {
+	imageSourceConfig := config[0].(map[string]interface{})
+
+	imageSource := &godo.ImageSourceSpec{
+		RegistryType: godo.ImageSourceSpecRegistryType(imageSourceConfig["registry_type"].(string)),
+		Registry:     imageSourceConfig["registry"].(string),
+		Repository:   imageSourceConfig["repository"].(string),
+		Tag:          imageSourceConfig["tag"].(string),
+	}
+
+	return imageSource
+}
+
+func flattenAppImageSourceSpec(spec *godo.ImageSourceSpec) []interface{} {
+	result := make([]interface{}, 0)
+
+	if spec != nil {
+		r := make(map[string]interface{})
+		r["registry_type"] = string((*spec).RegistryType)
+		r["registry"] = (*spec).Registry
+		r["repository"] = (*spec).Repository
+		r["tag"] = (*spec).Tag
+
+		result = append(result, r)
+	}
+
+	return result
+}
+
 func expandAppEnvs(config []interface{}) []*godo.AppVariableDefinition {
 	appEnvs := make([]*godo.AppVariableDefinition, 0, len(config))
 
@@ -647,6 +895,16 @@ func flattenAppHealthCheck(check *godo.AppServiceSpecHealthCheck) []interface{} 
 	return result
 }
 
+func expandAppInternalPorts(config []interface{}) []int64 {
+	appInternalPorts := make([]int64, len(config))
+
+	for i, v := range config {
+		appInternalPorts[i] = int64(v.(int))
+	}
+
+	return appInternalPorts
+}
+
 func expandAppRoutes(config []interface{}) []*godo.AppRouteSpec {
 	appRoutes := make([]*godo.AppRouteSpec, 0, len(config))
 
@@ -661,6 +919,16 @@ func expandAppRoutes(config []interface{}) []*godo.AppRouteSpec {
 	}
 
 	return appRoutes
+}
+
+func flattenAppServiceInternalPortsSpec(internalPorts []int64) *schema.Set {
+	result := schema.NewSet(schema.HashInt, []interface{}{})
+
+	for _, internalPort := range internalPorts {
+		result.Add(int(internalPort))
+	}
+
+	return result
 }
 
 func flattenAppRoutes(routes []*godo.AppRouteSpec) []interface{} {
@@ -710,6 +978,11 @@ func expandAppSpecServices(config []interface{}) []*godo.AppServiceSpec {
 			s.Git = expandAppGitSourceSpec(git)
 		}
 
+		image := service["image"].([]interface{})
+		if len(image) > 0 {
+			s.Image = expandAppImageSourceSpec(image)
+		}
+
 		routes := service["routes"].([]interface{})
 		if len(routes) > 0 {
 			s.Routes = expandAppRoutes(routes)
@@ -718,6 +991,11 @@ func expandAppSpecServices(config []interface{}) []*godo.AppServiceSpec {
 		checks := service["health_check"].([]interface{})
 		if len(checks) > 0 {
 			s.HealthCheck = expandAppHealthCheck(checks)
+		}
+
+		internalPorts := service["internal_ports"].(*schema.Set).List()
+		if len(internalPorts) > 0 {
+			s.InternalPorts = expandAppInternalPorts(internalPorts)
 		}
 
 		appServices = append(appServices, s)
@@ -737,7 +1015,9 @@ func flattenAppSpecServices(services []*godo.AppServiceSpec) []map[string]interf
 		r["build_command"] = s.BuildCommand
 		r["github"] = flattenAppGitHubSourceSpec(s.GitHub)
 		r["gitlab"] = flattenAppGitLabSourceSpec(s.GitLab)
+		r["internal_ports"] = flattenAppServiceInternalPortsSpec(s.InternalPorts)
 		r["git"] = flattenAppGitSourceSpec(s.Git)
+		r["image"] = flattenAppImageSourceSpec(s.Image)
 		r["http_port"] = int(s.HTTPPort)
 		r["routes"] = flattenAppRoutes(s.Routes)
 		r["dockerfile_path"] = s.DockerfilePath
@@ -859,6 +1139,11 @@ func expandAppSpecWorkers(config []interface{}) []*godo.AppWorkerSpec {
 			s.Git = expandAppGitSourceSpec(git)
 		}
 
+		image := worker["image"].([]interface{})
+		if len(image) > 0 {
+			s.Image = expandAppImageSourceSpec(image)
+		}
+
 		appWorkers = append(appWorkers, s)
 	}
 
@@ -877,12 +1162,85 @@ func flattenAppSpecWorkers(workers []*godo.AppWorkerSpec) []map[string]interface
 		r["github"] = flattenAppGitHubSourceSpec(w.GitHub)
 		r["gitlab"] = flattenAppGitLabSourceSpec(w.GitLab)
 		r["git"] = flattenAppGitSourceSpec(w.Git)
+		r["image"] = flattenAppImageSourceSpec(w.Image)
 		r["dockerfile_path"] = w.DockerfilePath
 		r["env"] = flattenAppEnvs(w.Envs)
 		r["instance_size_slug"] = w.InstanceSizeSlug
 		r["instance_count"] = int(w.InstanceCount)
 		r["source_dir"] = w.SourceDir
 		r["environment_slug"] = w.EnvironmentSlug
+
+		result[i] = r
+	}
+
+	return result
+}
+
+func expandAppSpecJobs(config []interface{}) []*godo.AppJobSpec {
+	appJobs := make([]*godo.AppJobSpec, 0, len(config))
+
+	for _, rawJob := range config {
+		job := rawJob.(map[string]interface{})
+
+		s := &godo.AppJobSpec{
+			Name:             job["name"].(string),
+			RunCommand:       job["run_command"].(string),
+			BuildCommand:     job["build_command"].(string),
+			DockerfilePath:   job["dockerfile_path"].(string),
+			Envs:             expandAppEnvs(job["env"].(*schema.Set).List()),
+			InstanceSizeSlug: job["instance_size_slug"].(string),
+			InstanceCount:    int64(job["instance_count"].(int)),
+			SourceDir:        job["source_dir"].(string),
+			EnvironmentSlug:  job["environment_slug"].(string),
+			Kind:             godo.AppJobSpecKind(job["kind"].(string)),
+		}
+
+		github := job["github"].([]interface{})
+		if len(github) > 0 {
+			s.GitHub = expandAppGitHubSourceSpec(github)
+		}
+
+		gitlab := job["gitlab"].([]interface{})
+		if len(gitlab) > 0 {
+			s.GitLab = expandAppGitLabSourceSpec(gitlab)
+		}
+
+		git := job["git"].([]interface{})
+		if len(git) > 0 {
+			s.Git = expandAppGitSourceSpec(git)
+		}
+
+		image := job["image"].([]interface{})
+		if len(image) > 0 {
+			s.Image = expandAppImageSourceSpec(image)
+		}
+
+		appJobs = append(appJobs, s)
+	}
+
+	return appJobs
+}
+
+func flattenAppSpecJobs(jobs []*godo.AppJobSpec) []map[string]interface{} {
+	result := make([]map[string]interface{}, len(jobs))
+
+	for i, j := range jobs {
+		r := make(map[string]interface{})
+
+		r["name"] = j.Name
+		r["run_command"] = j.RunCommand
+		r["build_command"] = j.BuildCommand
+		r["github"] = flattenAppGitHubSourceSpec(j.GitHub)
+		r["gitlab"] = flattenAppGitLabSourceSpec(j.GitLab)
+		r["git"] = flattenAppGitSourceSpec(j.Git)
+		r["image"] = flattenAppImageSourceSpec(j.Image)
+		r["dockerfile_path"] = j.DockerfilePath
+		r["env"] = flattenAppEnvs(j.Envs)
+		r["instance_size_slug"] = j.InstanceSizeSlug
+		r["instance_count"] = int(j.InstanceCount)
+		r["source_dir"] = j.SourceDir
+		r["environment_slug"] = j.EnvironmentSlug
+		r["kind"] = string(j.Kind)
 
 		result[i] = r
 	}

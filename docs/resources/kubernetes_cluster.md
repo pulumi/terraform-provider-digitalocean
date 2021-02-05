@@ -30,7 +30,7 @@ resource "digitalocean_kubernetes_cluster" "foo" {
 Node pools may also be configured to [autoscale](https://www.digitalocean.com/docs/kubernetes/how-to/autoscale/).
 For example:
 
-```
+```hcl
 resource "digitalocean_kubernetes_cluster" "foo" {
   name    = "foo"
   region  = "nyc1"
@@ -53,7 +53,7 @@ Note that, while individual node pools may scale to 0, a cluster must always inc
 DigitalOcean Kubernetes clusters may also be configured to [auto upgrade](https://www.digitalocean.com/docs/kubernetes/how-to/upgrade-cluster/#automatically) patch versions.
 For example:
 
-```
+```hcl
 data "digitalocean_kubernetes_versions" "example" {
   version_prefix = "1.18."
 }
@@ -73,6 +73,59 @@ resource "digitalocean_kubernetes_cluster" "foo" {
 ```
 
 Note that a data source is used to supply the version. This is needed to prevent configuration diff whenever a cluster is upgraded.
+
+### Kubernetes Terraform Provider Example
+
+The cluster's kubeconfig is exported as an attribute allowing you to use it with
+the [Kubernetes Terraform provider](https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs).
+
+~> When using interpolation to pass credentials from a `digitalocean_kubernetes_cluster`
+resource to the Kubernetes provider, the cluster resource generally should not
+be created in the same Terraform module where Kubernetes provider resources are
+also used. This can lead to unpredictable errors which are hard to debug and
+diagnose. The root issue lies with the order in which Terraform itself evaluates
+the provider blocks vs. actual resources.
+
+When using the Kubernetes provider with a cluster created in a separate Terraform
+module or configuration, use the [`digitalocean_kubernetes_cluster` data-source](https://registry.terraform.io/providers/digitalocean/digitalocean/latest/docs/data-sources/kubernetes_cluster)
+to access the cluster's credentials. [See here for a full example](https://github.com/digitalocean/terraform-provider-digitalocean/tree/main/examples/kubernetes).
+
+```hcl
+data "digitalocean_kubernetes_cluster" "example" {
+  name = "prod-cluster-01"
+}
+
+provider "kubernetes" {
+  host             = data.digitalocean_kubernetes_cluster.example.endpoint
+  token            = data.digitalocean_kubernetes_cluster.example.kube_config[0].token
+  cluster_ca_certificate = base64decode(
+    data.digitalocean_kubernetes_cluster.example.kube_config[0].cluster_ca_certificate
+  )
+}
+```
+
+#### Exec credential plugin
+
+Another method to ensure that the Kubernetes provider is receiving valid credentials
+is to use an exec plugin. In order to use use this approach, the DigitalOcean
+CLI (`doctl`) must be present. `doctl` will renew the token if needed before
+initializing the provider.
+
+```hcl
+provider "kubernetes" {
+  host                   = data.digitalocean_kubernetes_cluster.foo.endpoint
+  cluster_ca_certificate = base64decode(
+    data.digitalocean_kubernetes_cluster.foo.kube_config[0].cluster_ca_certificate
+  )
+
+  exec {
+    api_version = "client.authentication.k8s.io/v1beta1"
+    command     = "doctl"
+    args = ["kubernetes", "cluster", "kubeconfig", "exec-credential",
+    "--version=v1beta1", data.digitalocean_kubernetes_cluster.foo.id]
+  }
+}
+```
 
 ## Argument Reference
 

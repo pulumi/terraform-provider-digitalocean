@@ -49,6 +49,35 @@ func testSweepApp(region string) error {
 	return nil
 }
 
+func TestAccDigitalOceanApp_Image(t *testing.T) {
+	var app godo.App
+	appName := randomTestName()
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckDigitalOceanAppDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: fmt.Sprintf(testAccCheckDigitalOceanAppConfig_addImage, appName),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckDigitalOceanAppExists("digitalocean_app.foobar", &app),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.service.0.routes.0.path", "/"),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.service.0.image.0.registry_type", "DOCKER_HUB"),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.service.0.image.0.registry", "caddy"),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.service.0.image.0.repository", "caddy"),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.service.0.image.0.tag", "2.2.1-alpine"),
+				),
+			},
+		},
+	})
+}
+
 func TestAccDigitalOceanApp_Basic(t *testing.T) {
 	var app godo.App
 	appName := randomTestName()
@@ -116,6 +145,37 @@ func TestAccDigitalOceanApp_Basic(t *testing.T) {
 	})
 }
 
+func TestAccDigitalOceanApp_Job(t *testing.T) {
+	var app godo.App
+	appName := randomTestName()
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckDigitalOceanAppDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: fmt.Sprintf(testAccCheckDigitalOceanAppConfig_addJob, appName),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckDigitalOceanAppExists("digitalocean_app.foobar", &app),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.job.0.name", "example-pre-job"),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.job.0.kind", "PRE_DEPLOY"),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.job.0.run_command", "echo 'This is a pre-deploy job.'"),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.job.1.name", "example-post-job"),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.job.1.kind", "POST_DEPLOY"),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.job.1.run_command", "echo 'This is a post-deploy job.'"),
+				),
+			},
+		},
+	})
+}
+
 func TestAccDigitalOceanApp_StaticSite(t *testing.T) {
 	var app godo.App
 	appName := randomTestName()
@@ -149,6 +209,43 @@ func TestAccDigitalOceanApp_StaticSite(t *testing.T) {
 						"https://github.com/digitalocean/sample-jekyll.git"),
 					resource.TestCheckResourceAttr(
 						"digitalocean_app.foobar", "spec.0.static_site.0.git.0.branch", "main"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccDigitalOceanApp_InternalPort(t *testing.T) {
+	var app godo.App
+	appName := randomTestName()
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckDigitalOceanAppDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: fmt.Sprintf(testAccCheckDigitalOceanAppConfig_addInternalPort, appName),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckDigitalOceanAppExists("digitalocean_app.foobar", &app),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.name", appName),
+					resource.TestCheckResourceAttrSet("digitalocean_app.foobar", "active_deployment_id"),
+					resource.TestCheckResourceAttrSet("digitalocean_app.foobar", "updated_at"),
+					resource.TestCheckResourceAttrSet("digitalocean_app.foobar", "created_at"),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.service.0.instance_count", "1"),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.service.0.instance_size_slug", "basic-xxs"),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.service.0.git.0.repo_clone_url",
+						"https://github.com/digitalocean/sample-golang.git"),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.service.0.git.0.branch", "main"),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.service.0.internal_ports.#", "1"),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.service.0.internal_ports.0", "5000"),
 				),
 			},
 		},
@@ -376,6 +473,121 @@ func TestAccDigitalOceanApp_Worker(t *testing.T) {
 	})
 }
 
+func TestAccDigitalOceanApp_Domain(t *testing.T) {
+	var app godo.App
+	appName := randomTestName()
+
+	domain := fmt.Sprintf(`
+       domain {
+         name     = "%s.com"
+         wildcard = true
+       }
+`, appName)
+
+	updatedDomain := fmt.Sprintf(`
+       domain {
+         name     = "%s.net"
+         wildcard = true
+       }
+`, appName)
+
+	domainsConfig := fmt.Sprintf(testAccCheckDigitalOceanAppConfig_Domains, appName, domain)
+	updatedDomainConfig := fmt.Sprintf(testAccCheckDigitalOceanAppConfig_Domains, appName, updatedDomain)
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckDigitalOceanAppDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: domainsConfig,
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckDigitalOceanAppExists("digitalocean_app.foobar", &app),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.name", appName),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.domain.0.name", appName+".com"),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.domain.0.wildcard", "true"),
+				),
+			},
+			{
+				Config: updatedDomainConfig,
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckDigitalOceanAppExists("digitalocean_app.foobar", &app),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.name", appName),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.domain.0.name", appName+".net"),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.domain.0.wildcard", "true"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccDigitalOceanApp_DomainsDeprecation(t *testing.T) {
+	var app godo.App
+	appName := randomTestName()
+
+	deprecatedStyleDomain := fmt.Sprintf(`
+       domains = ["%s.com"]
+`, appName)
+
+	updatedDeprecatedStyleDomain := fmt.Sprintf(`
+       domains = ["%s.net"]
+`, appName)
+
+	newStyleDomain := fmt.Sprintf(`
+       domain {
+         name     = "%s.com"
+         wildcard = true
+       }
+`, appName)
+
+	domainsConfig := fmt.Sprintf(testAccCheckDigitalOceanAppConfig_Domains, appName, deprecatedStyleDomain)
+	updateDomainsConfig := fmt.Sprintf(testAccCheckDigitalOceanAppConfig_Domains, appName, updatedDeprecatedStyleDomain)
+	replaceDomainsConfig := fmt.Sprintf(testAccCheckDigitalOceanAppConfig_Domains, appName, newStyleDomain)
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckDigitalOceanAppDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: domainsConfig,
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckDigitalOceanAppExists("digitalocean_app.foobar", &app),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.name", appName),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.domains.0", appName+".com"),
+				),
+			},
+			{
+				Config: updateDomainsConfig,
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckDigitalOceanAppExists("digitalocean_app.foobar", &app),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.name", appName),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.domains.0", appName+".net"),
+				),
+			},
+			{
+				Config: replaceDomainsConfig,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.domain.0.name", appName+".com"),
+					resource.TestCheckResourceAttr(
+						"digitalocean_app.foobar", "spec.0.domain.0.wildcard", "true"),
+				),
+			},
+		},
+	})
+}
+
 func testAccCheckDigitalOceanAppDestroy(s *terraform.State) error {
 	client := testAccProvider.Meta().(*CombinedConfig).godoClient()
 
@@ -484,6 +696,51 @@ resource "digitalocean_app" "foobar" {
   }
 }`
 
+var testAccCheckDigitalOceanAppConfig_addImage = `
+resource "digitalocean_app" "foobar" {
+  spec {
+    name = "%s"
+    region = "ams"
+
+    service {
+      name               = "image-service"
+      instance_count     = 1
+      instance_size_slug = "basic-xxs"
+
+      image {
+        registry_type = "DOCKER_HUB"
+        registry      = "caddy"
+        repository    = "caddy"
+        tag           = "2.2.1-alpine"
+      }
+
+      http_port = 80
+    }
+  }
+}`
+
+var testAccCheckDigitalOceanAppConfig_addInternalPort = `
+resource "digitalocean_app" "foobar" {
+  spec {
+    name = "%s"
+    region = "ams"
+
+    service {
+      name               = "go-service"
+      environment_slug   = "go"
+      instance_count     = 1
+      instance_size_slug = "basic-xxs"
+
+      git {
+        repo_clone_url = "https://github.com/digitalocean/sample-golang.git"
+        branch         = "main"
+      }
+	  
+	  internal_ports = [ 5000 ]
+    }
+  }
+}`
+
 var testAccCheckDigitalOceanAppConfig_addDatabase = `
 resource "digitalocean_app" "foobar" {
   spec {
@@ -535,6 +792,10 @@ resource "digitalocean_app" "foobar" {
       routes {
         path = "/"
       }
+
+      routes {
+        path = "/foo"
+      }
     }
   }
 }`
@@ -576,6 +837,82 @@ resource "digitalocean_app" "foobar" {
 
       git {
         repo_clone_url = "https://github.com/digitalocean/sample-sleeper.git"
+        branch         = "main"
+      }
+    }
+  }
+}`
+
+var testAccCheckDigitalOceanAppConfig_addJob = `
+resource "digitalocean_app" "foobar" {
+  spec {
+    name = "%s"
+    region = "ams"
+
+    job {
+      name               = "example-pre-job"
+      instance_count     = 1
+      instance_size_slug = "basic-xxs"
+      kind = "PRE_DEPLOY"
+      run_command = "echo 'This is a pre-deploy job.'"
+
+      image {
+        registry_type = "DOCKER_HUB"
+        registry      = "frolvlad"
+        repository    = "alpine-bash"
+        tag           = "latest"
+      }
+    }
+
+    service {
+      name               = "go-service"
+      environment_slug   = "go"
+      instance_count     = 1
+      instance_size_slug = "basic-xxs"
+
+      git {
+        repo_clone_url = "https://github.com/digitalocean/sample-golang.git"
+        branch         = "main"
+      }
+
+      routes {
+        path = "/"
+      }
+    }
+
+    job {
+      name               = "example-post-job"
+      instance_count     = 1
+      instance_size_slug = "basic-xxs"
+      kind = "POST_DEPLOY"
+      run_command = "echo 'This is a post-deploy job.'"
+
+      image {
+        registry_type = "DOCKER_HUB"
+        registry      = "frolvlad"
+        repository    = "alpine-bash"
+        tag           = "latest"
+      }
+    }
+  }
+}`
+
+var testAccCheckDigitalOceanAppConfig_Domains = `
+resource "digitalocean_app" "foobar" {
+  spec {
+    name = "%s"
+    region = "ams"
+
+    %s
+
+    service {
+      name               = "go-service"
+      environment_slug   = "go"
+      instance_count     = 1
+      instance_size_slug = "basic-xxs"
+
+      git {
+        repo_clone_url = "https://github.com/digitalocean/sample-golang.git"
         branch         = "main"
       }
     }
