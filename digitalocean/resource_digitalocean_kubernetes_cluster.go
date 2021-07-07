@@ -87,6 +87,32 @@ func resourceDigitalOceanKubernetesCluster() *schema.Resource {
 
 			"tags": tagsSchema(),
 
+			"maintenance_policy": {
+				Type:     schema.TypeList,
+				MinItems: 1,
+				MaxItems: 1,
+				Optional: true,
+				Computed: true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"day": {
+							Type:     schema.TypeString,
+							Optional: true,
+							Computed: true,
+						},
+						"start_time": {
+							Type:     schema.TypeString,
+							Optional: true,
+							Computed: true,
+						},
+						"duration": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+					},
+				},
+			},
+
 			"node_pool": {
 				Type:     schema.TypeList,
 				Required: true,
@@ -123,6 +149,10 @@ func resourceDigitalOceanKubernetesCluster() *schema.Resource {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
+		},
+
+		Timeouts: &schema.ResourceTimeout{
+			Create: schema.DefaultTimeout(30 * time.Minute),
 		},
 
 		CustomizeDiff: customdiff.All(
@@ -223,6 +253,14 @@ func resourceDigitalOceanKubernetesClusterCreate(ctx context.Context, d *schema.
 		NodePools:    poolCreateRequests,
 	}
 
+	if maint, ok := d.GetOk("maintenance_policy"); ok {
+		maintPolicy, err := expandMaintPolicyOpts(maint.([]interface{}))
+		if err != nil {
+			return diag.Errorf("Error setting Kubernetes maintenance policy : %s", err)
+		}
+		opts.MaintenancePolicy = maintPolicy
+	}
+
 	if vpc, ok := d.GetOk("vpc_uuid"); ok {
 		opts.VPCUUID = vpc.(string)
 	}
@@ -236,14 +274,15 @@ func resourceDigitalOceanKubernetesClusterCreate(ctx context.Context, d *schema.
 		return diag.Errorf("Error creating Kubernetes cluster: %s", err)
 	}
 
-	// wait for completion
-	cluster, err = waitForKubernetesClusterCreate(client, cluster.ID)
-	if err != nil {
-		return diag.Errorf("Error creating Kubernetes cluster: %s", err)
-	}
-
 	// set the cluster id
 	d.SetId(cluster.ID)
+
+	// wait for completion
+	_, err = waitForKubernetesClusterCreate(client, d)
+	if err != nil {
+		d.SetId("")
+		return diag.Errorf("Error creating Kubernetes cluster: %s", err)
+	}
 
 	return resourceDigitalOceanKubernetesClusterRead(ctx, d, meta)
 }
@@ -284,6 +323,10 @@ func digitaloceanKubernetesClusterRead(
 	d.Set("vpc_uuid", cluster.VPCUUID)
 	d.Set("auto_upgrade", cluster.AutoUpgrade)
 	d.Set("urn", cluster.URN())
+
+	if err := d.Set("maintenance_policy", flattenMaintPolicyOpts(cluster.MaintenancePolicy)); err != nil {
+		return diag.Errorf("[DEBUG] Error setting maintenance_policy - error: %#v", err)
+	}
 
 	// find the default node pool from all the pools in the cluster
 	// the default node pool has a custom tag terraform:default-node-pool
@@ -338,13 +381,21 @@ func resourceDigitalOceanKubernetesClusterUpdate(ctx context.Context, d *schema.
 	client := meta.(*CombinedConfig).godoClient()
 
 	// Figure out the changes and then call the appropriate API methods
-	if d.HasChange("name") || d.HasChange("tags") || d.HasChange("auto_upgrade") || d.HasChange("surge_upgrade") {
+	if d.HasChanges("name", "tags", "auto_upgrade", "surge_upgrade", "maintenance_policy") {
 
 		opts := &godo.KubernetesClusterUpdateRequest{
 			Name:         d.Get("name").(string),
 			Tags:         expandTags(d.Get("tags").(*schema.Set).List()),
 			AutoUpgrade:  godo.Bool(d.Get("auto_upgrade").(bool)),
 			SurgeUpgrade: d.Get("surge_upgrade").(bool),
+		}
+
+		if maint, ok := d.GetOk("maintenance_policy"); ok {
+			maintPolicy, err := expandMaintPolicyOpts(maint.([]interface{}))
+			if err != nil {
+				return diag.Errorf("Error setting Kubernetes maintenance policy : %s", err)
+			}
+			opts.MaintenancePolicy = maintPolicy
 		}
 
 		_, resp, err := client.Kubernetes.Update(context.Background(), d.Id(), opts)
@@ -373,7 +424,8 @@ func resourceDigitalOceanKubernetesClusterUpdate(ctx context.Context, d *schema.
 	}
 
 	// update the existing default pool
-	_, err := digitaloceanKubernetesNodePoolUpdate(client, newPool, d.Id(), oldPool["id"].(string), digitaloceanKubernetesDefaultNodePoolTag)
+	timeout := d.Timeout(schema.TimeoutCreate)
+	_, err := digitaloceanKubernetesNodePoolUpdate(client, timeout, newPool, d.Id(), oldPool["id"].(string), digitaloceanKubernetesDefaultNodePoolTag)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -501,13 +553,17 @@ func resourceDigitalOceanKubernetesClusterImportState(d *schema.ResourceData, me
 	return resourceDatas, nil
 }
 
-func waitForKubernetesClusterCreate(client *godo.Client, id string) (*godo.KubernetesCluster, error) {
-	ticker := time.NewTicker(10 * time.Second)
-	timeout := 120
-	n := 0
+func waitForKubernetesClusterCreate(client *godo.Client, d *schema.ResourceData) (*godo.KubernetesCluster, error) {
+	var (
+		tickerInterval = 10 * time.Second
+		timeoutSeconds = d.Timeout(schema.TimeoutCreate).Seconds()
+		timeout        = int(timeoutSeconds / tickerInterval.Seconds())
+		n              = 0
+		ticker         = time.NewTicker(tickerInterval)
+	)
 
 	for range ticker.C {
-		cluster, _, err := client.Kubernetes.Get(context.Background(), id)
+		cluster, _, err := client.Kubernetes.Get(context.Background(), d.Id())
 		if err != nil {
 			ticker.Stop()
 			return nil, fmt.Errorf("Error trying to read cluster state: %s", err)
